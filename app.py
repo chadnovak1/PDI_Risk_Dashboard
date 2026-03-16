@@ -74,6 +74,41 @@ def risk_level(score: float) -> str:
         return "Severe"
 
 
+def validate_upload(uploaded_file, expected_cols: list[str]) -> tuple[bool, str, pd.DataFrame]:
+    """Validate and load an uploaded CSV file."""
+    try:
+        df = pd.read_csv(uploaded_file)
+        
+        # Check if all expected columns are present
+        missing_cols = set(expected_cols) - set(df.columns)
+        if missing_cols:
+            return False, f"Missing columns: {', '.join(missing_cols)}", pd.DataFrame()
+        
+        return True, "✓ File validated successfully", df
+    except Exception as e:
+        return False, f"Error reading file: {str(e)}", pd.DataFrame()
+
+
+def save_uploaded_file(file_path: Path, df: pd.DataFrame) -> bool:
+    """Save uploaded dataframe to file."""
+    try:
+        df.to_csv(file_path, index=False)
+        return True
+    except Exception as e:
+        st.error(f"Error saving file: {str(e)}")
+        return False
+
+
+def create_template_df(columns: list[str], num_rows: int = 2) -> pd.DataFrame:
+    """Create a template dataframe with specified columns and empty rows."""
+    return pd.DataFrame({col: [""] * num_rows for col in columns})
+
+
+def generate_csv_download(df: pd.DataFrame, filename: str) -> bytes:
+    """Generate CSV bytes from dataframe for download."""
+    return df.to_csv(index=False).encode('utf-8')
+
+
 # ============================================================
 # LOAD DATA
 # ============================================================
@@ -190,6 +225,102 @@ for df, col in [
 ]:
     if col in df.columns:
         df[col] = df[col].fillna("Unknown")
+
+# ============================================================
+# CLAIMS ANALYTICS HELPERS
+# ============================================================
+def calculate_claims_metrics():
+    """Calculate TRIR, DART, Incident Frequency, and Severity metrics by crew."""
+    if loss_df.empty or payroll_df.empty:
+        return pd.DataFrame()
+
+    # Get total hours by crew
+    crew_hours = payroll_df.groupby("Crew", dropna=False)["HoursWorked"].sum().reset_index()
+    crew_hours.columns = ["Crew", "TotalHours"]
+
+    # Get claim metrics by crew
+    claims_agg = loss_df.groupby("Crew").agg(
+        TotalClaims=("ClaimNumber", "count"),
+        RecordableClaims=("Recordable", "sum"),
+        LostTimeClaims=("LostTime", "sum"),
+        TotalClaimCost=("TotalIncurred", "sum"),
+    ).reset_index()
+
+    # Merge
+    metrics_df = crew_hours.merge(claims_agg, on="Crew", how="left").fillna(0)
+
+    # Calculate rates (using 200,000 base hours per OSHA standard)
+    metrics_df["TRIR"] = np.where(
+        metrics_df["TotalHours"] > 0,
+        (metrics_df["RecordableClaims"] * 200000) / metrics_df["TotalHours"],
+        0,
+    )
+
+    metrics_df["DART"] = np.where(
+        metrics_df["TotalHours"] > 0,
+        (metrics_df["LostTimeClaims"] * 200000) / metrics_df["TotalHours"],
+        0,
+    )
+
+    # Get incident frequency by crew
+    incident_counts = incident_df.groupby("Crew").size().reset_index(name="IncidentCount")
+    metrics_df = metrics_df.merge(incident_counts, on="Crew", how="left").fillna({
+        "IncidentCount": 0
+    })
+
+    metrics_df["IncidentFrequency"] = np.where(
+        metrics_df["TotalHours"] > 0,
+        (metrics_df["IncidentCount"] * 200000) / metrics_df["TotalHours"],
+        0,
+    )
+
+    # Calculate severity (average cost per claim)
+    metrics_df["Severity"] = np.where(
+        metrics_df["TotalClaims"] > 0,
+        metrics_df["TotalClaimCost"] / metrics_df["TotalClaims"],
+        0,
+    )
+
+    return metrics_df.sort_values("TRIR", ascending=False)
+
+
+def get_metrics_by_period():
+    """Calculate TRIR and DART by month for trend analysis."""
+    if loss_df.empty or payroll_df.empty:
+        return pd.DataFrame()
+
+    # Monthly payroll totals
+    monthly_hours = payroll_df.groupby(["Year", "Month"])["HoursWorked"].sum().reset_index()
+    monthly_hours.columns = ["Year", "Month", "TotalHours"]
+
+    # Monthly claim metrics
+    loss_df_copy = loss_df.copy()
+    loss_df_copy["Year"] = loss_df_copy["IncidentDate"].dt.year
+    loss_df_copy["Month"] = loss_df_copy["IncidentDate"].dt.month
+
+    monthly_claims = loss_df_copy.groupby(["Year", "Month"]).agg(
+        RecordableClaims=("Recordable", "sum"),
+        LostTimeClaims=("LostTime", "sum"),
+    ).reset_index()
+
+    # Merge
+    trends_df = monthly_hours.merge(monthly_claims, on=["Year", "Month"], how="left").fillna(0)
+    trends_df["Date"] = pd.to_datetime(trends_df[["Year", "Month"]].assign(DAY=1))
+
+    # Calculate rates
+    trends_df["TRIR"] = np.where(
+        trends_df["TotalHours"] > 0,
+        (trends_df["RecordableClaims"] * 200000) / trends_df["TotalHours"],
+        0,
+    )
+
+    trends_df["DART"] = np.where(
+        trends_df["TotalHours"] > 0,
+        (trends_df["LostTimeClaims"] * 200000) / trends_df["TotalHours"],
+        0,
+    )
+
+    return trends_df.sort_values("Date")
 
 # ============================================================
 # RISK MODEL
@@ -314,6 +445,7 @@ page = st.sidebar.radio(
         "Fleet Risk",
         "Utility Strike Tracker",
         "Data Health",
+        "Upload Data",
     ],
 )
 
@@ -402,6 +534,108 @@ elif page == "Claims Analytics":
     if loss_df.empty:
         st.info("No claim data available.")
     else:
+        # Overview metrics
+        claims_metrics = calculate_claims_metrics()
+        
+        if not claims_metrics.empty:
+            c1, c2, c3, c4 = st.columns(4)
+            c1.metric("Avg TRIR", f"{claims_metrics['TRIR'].mean():.2f}")
+            c2.metric("Avg DART", f"{claims_metrics['DART'].mean():.2f}")
+            c3.metric("Avg Incident Freq", f"{claims_metrics['IncidentFrequency'].mean():.2f}")
+            c4.metric("Avg Severity ($)", f"${claims_metrics['Severity'].mean():,.0f}")
+        
+        st.markdown("---")
+        st.subheader("Key Safety Metrics by Crew")
+        
+        if not claims_metrics.empty:
+            left, right = st.columns(2)
+            
+            with left:
+                fig_trir = px.bar(
+                    claims_metrics,
+                    x="Crew",
+                    y="TRIR",
+                    title="TRIR (Total Recordable Incident Rate) by Crew",
+                    color="TRIR",
+                    color_continuous_scale="Reds",
+                    labels={"TRIR": "TRIR (per 200k hrs)"}
+                )
+                st.plotly_chart(fig_trir, use_container_width=True)
+            
+            with right:
+                fig_dart = px.bar(
+                    claims_metrics,
+                    x="Crew",
+                    y="DART",
+                    title="DART (Days Away/Restricted/Transferred) by Crew",
+                    color="DART",
+                    color_continuous_scale="Oranges",
+                    labels={"DART": "DART (per 200k hrs)"}
+                )
+                st.plotly_chart(fig_dart, use_container_width=True)
+        
+        st.markdown("---")
+        
+        left, right = st.columns(2)
+        
+        with left:
+            if not claims_metrics.empty:
+                fig_freq = px.bar(
+                    claims_metrics,
+                    x="Crew",
+                    y="IncidentFrequency",
+                    title="Incident Frequency by Crew",
+                    color="IncidentFrequency",
+                    color_continuous_scale="Blues",
+                    labels={"IncidentFrequency": "Frequency (per 200k hrs)"}
+                )
+                st.plotly_chart(fig_freq, use_container_width=True)
+        
+        with right:
+            if not claims_metrics.empty:
+                fig_severity = px.bar(
+                    claims_metrics,
+                    x="Crew",
+                    y="Severity",
+                    title="Average Claim Severity by Crew",
+                    color="Severity",
+                    color_continuous_scale="Purples",
+                    labels={"Severity": "Avg Cost per Claim ($)"}
+                )
+                st.plotly_chart(fig_severity, use_container_width=True)
+        
+        st.markdown("---")
+        st.subheader("Trends Over Time")
+        
+        trends_df = get_metrics_by_period()
+        if not trends_df.empty:
+            left, right = st.columns(2)
+            
+            with left:
+                fig_trir_trend = px.line(
+                    trends_df,
+                    x="Date",
+                    y="TRIR",
+                    title="TRIR Trend",
+                    markers=True,
+                    labels={"TRIR": "TRIR (per 200k hrs)", "Date": "Month"}
+                )
+                st.plotly_chart(fig_trir_trend, use_container_width=True)
+            
+            with right:
+                fig_dart_trend = px.line(
+                    trends_df,
+                    x="Date",
+                    y="DART",
+                    title="DART Trend",
+                    markers=True,
+                    labels={"DART": "DART (per 200k hrs)", "Date": "Month"}
+                )
+                st.plotly_chart(fig_dart_trend, use_container_width=True)
+        
+        st.markdown("---")
+        st.subheader("Claims Distribution")
+        
         left, right = st.columns(2)
 
         with left:
@@ -415,7 +649,7 @@ elif page == "Claims Analytics":
                 cause_counts = (
                     loss_df.groupby("Cause").size().reset_index(name="Count").sort_values("Count", ascending=False)
                 )
-                fig = px.bar(cause_counts, x="Cause", y="Count", title="Claims by Cause")
+                fig = px.bar(cause_counts, x="Cause", y="Count", title="Claims by Cause", height=400)
                 st.plotly_chart(fig, use_container_width=True)
 
         if {"IncidentDate", "ReportDate"}.issubset(loss_df.columns):
@@ -428,6 +662,13 @@ elif page == "Claims Analytics":
                 st.metric("Average Lag Days", f"{lag_df['LagDays'].mean():.1f}")
                 fig = px.histogram(lag_df, x="LagDays", nbins=15, title="Claim Lag Distribution")
                 st.plotly_chart(fig, use_container_width=True)
+
+        st.markdown("---")
+        st.subheader("Detailed Metrics by Crew")
+        if not claims_metrics.empty:
+            display_cols = ["Crew", "TotalHours", "TotalClaims", "RecordableClaims", 
+                          "LostTimeClaims", "TRIR", "DART", "IncidentFrequency", "Severity"]
+            st.dataframe(claims_metrics[display_cols], use_container_width=True)
 
 # ============================================================
 # PAGE: FLEET RISK
@@ -531,3 +772,240 @@ utility_strikes.csv or utility_strikes_sample.csv"""
 
     st.markdown("**utility_strikes**")
     st.code(",".join(UTILITY_COLS))
+
+# ============================================================
+# PAGE: UPLOAD DATA
+# ============================================================
+elif page == "Upload Data":
+    st.subheader("Upload Data Files")
+    st.markdown(
+        """
+        Upload updated CSV files to replace the current data. Files are saved to the `/data` directory.
+        Download templates below to ensure your data has all required columns.
+        """
+    )
+
+    st.markdown("---")
+    st.subheader("📥 Download Templates")
+    st.markdown("Click the buttons below to download CSV templates. Fill them out with your data and upload them back.")
+    
+    template_cols = st.columns(5)
+    
+    with template_cols[0]:
+        template_loss = create_template_df(LOSS_COLS, num_rows=2)
+        st.download_button(
+            label="📄 Loss Runs",
+            data=generate_csv_download(template_loss, "loss_runs_template.csv"),
+            file_name="loss_runs_template.csv",
+            mime="text/csv",
+            key="dl_loss_template"
+        )
+    
+    with template_cols[1]:
+        template_payroll = create_template_df(PAYROLL_COLS, num_rows=2)
+        st.download_button(
+            label="📄 Payroll Hours",
+            data=generate_csv_download(template_payroll, "payroll_hours_template.csv"),
+            file_name="payroll_hours_template.csv",
+            mime="text/csv",
+            key="dl_payroll_template"
+        )
+    
+    with template_cols[2]:
+        template_fleet = create_template_df(FLEET_COLS, num_rows=2)
+        st.download_button(
+            label="📄 Fleet Events",
+            data=generate_csv_download(template_fleet, "fleet_events_template.csv"),
+            file_name="fleet_events_template.csv",
+            mime="text/csv",
+            key="dl_fleet_template"
+        )
+    
+    with template_cols[3]:
+        template_incident = create_template_df(INCIDENT_COLS, num_rows=2)
+        st.download_button(
+            label="📄 Incidents",
+            data=generate_csv_download(template_incident, "incident_reports_template.csv"),
+            file_name="incident_reports_template.csv",
+            mime="text/csv",
+            key="dl_incident_template"
+        )
+    
+    with template_cols[4]:
+        template_utility = create_template_df(UTILITY_COLS, num_rows=2)
+        st.download_button(
+            label="📄 Utility Strikes",
+            data=generate_csv_download(template_utility, "utility_strikes_template.csv"),
+            file_name="utility_strikes_template.csv",
+            mime="text/csv",
+            key="dl_utility_template"
+        )
+
+    st.markdown("---")
+    st.subheader("📋 Expected Column Reference")
+    
+    with st.expander("Loss Runs Columns", expanded=False):
+        st.info("**Note:** IncidentDate and ReportDate should be in MM/DD/YYYY format. Recordable and LostTime should be: Yes/No, True/False, or 1/0")
+        loss_ref = pd.DataFrame({"Column": LOSS_COLS, "Example": [
+            "WC001", "Workers Comp", "3/10/2026", "3/11/2026", "Pot Hole Crew",
+            "John Smith", "John Doe", "Hand", "Cut from hand tool", "1200",
+            "3000", "4200", "Yes", "No", "Open"
+        ]})
+        st.dataframe(loss_ref, use_container_width=True, hide_index=True)
+    
+    with st.expander("Payroll Hours Columns", expanded=False):
+        st.info("**Note:** Year and Month should be numeric (e.g., 2026, 3)")
+        payroll_ref = pd.DataFrame({"Column": PAYROLL_COLS, "Example": [
+            "2026", "3", "Pot Hole Crew", "3900", "5", "87000"
+        ]})
+        st.dataframe(payroll_ref, use_container_width=True, hide_index=True)
+    
+    with st.expander("Fleet Events Columns", expanded=False):
+        st.info("**Note:** Date should be in MM/DD/YYYY format. All event counts should be numeric.")
+        fleet_ref = pd.DataFrame({"Column": FLEET_COLS, "Example": [
+            "3/10/2026", "F350-12", "Driver B", "Locator", "Pot Hole Crew",
+            "175", "5.8", "2", "0", "1", "0", "0", "0", "0.8"
+        ]})
+        st.dataframe(fleet_ref, use_container_width=True, hide_index=True)
+    
+    with st.expander("Incident Reports Columns", expanded=False):
+        st.info("**Note:** Date should be in MM/DD/YYYY format. CitationIssued and SafetyViolation should be: Yes/No, True/False, or 1/0")
+        incident_ref = pd.DataFrame({"Column": INCIDENT_COLS, "Example": [
+            "AA1", "3/9/2026", "12:30", "Vac Truck", "John Smith", "Driver A",
+            "Auto Accident", "Vac Truck", "Yes", "Yes", "Stream7", "APS"
+        ]})
+        st.dataframe(incident_ref, use_container_width=True, hide_index=True)
+    
+    with st.expander("Utility Strikes Columns", expanded=False):
+        st.info("**Note:** Date should be in MM/DD/YYYY format. Located, ToleranceZone, and CitationIssued should be: Yes/No, True/False, or 1/0. RepairCost should be numeric.")
+        utility_ref = pd.DataFrame({"Column": UTILITY_COLS, "Example": [
+            "GL1", "3/11/2026", "1:30", "Equipment Operator", "Operator", "John Smith",
+            "Excavator", "Fiber", "Yes", "Yes", "4500", "Yes", "Frye Rd", "SRP"
+        ]})
+        st.dataframe(utility_ref, use_container_width=True, hide_index=True)
+
+    st.markdown("---")
+    st.subheader("⬆️ Upload Your Data")
+
+    # Loss Runs Upload
+    st.markdown("### Loss Runs (Workers Comp & Liability Claims)")
+    loss_upload = st.file_uploader(
+        "Upload loss_runs.csv",
+        type="csv",
+        key="loss_uploader",
+        accept_multiple_files=False,
+    )
+    if loss_upload:
+        is_valid, msg, df = validate_upload(loss_upload, LOSS_COLS)
+        if is_valid:
+            st.success(msg)
+            col1, col2 = st.columns([3, 1])
+            with col1:
+                st.info(f"✓ File contains {len(df)} rows and {len(df.columns)} columns")
+            with col2:
+                if st.button("Save Loss Runs", key="save_loss"):
+                    file_path = DATA_DIR / "loss_runs.csv"
+                    if save_uploaded_file(file_path, df):
+                        st.success(f"✓ Saved! Refresh to see changes.")
+        else:
+            st.error(msg)
+
+    st.markdown("---")
+
+    # Payroll Hours Upload
+    st.markdown("### Payroll Hours")
+    payroll_upload = st.file_uploader(
+        "Upload payroll_hours.csv",
+        type="csv",
+        key="payroll_uploader",
+        accept_multiple_files=False,
+    )
+    if payroll_upload:
+        is_valid, msg, df = validate_upload(payroll_upload, PAYROLL_COLS)
+        if is_valid:
+            st.success(msg)
+            col1, col2 = st.columns([3, 1])
+            with col1:
+                st.info(f"✓ File contains {len(df)} rows and {len(df.columns)} columns")
+            with col2:
+                if st.button("Save Payroll Hours", key="save_payroll"):
+                    file_path = DATA_DIR / "payroll_hours.csv"
+                    if save_uploaded_file(file_path, df):
+                        st.success(f"✓ Saved! Refresh to see changes.")
+        else:
+            st.error(msg)
+
+    st.markdown("---")
+
+    # Fleet Events Upload
+    st.markdown("### Fleet Events")
+    fleet_upload = st.file_uploader(
+        "Upload fleet_events.csv",
+        type="csv",
+        key="fleet_uploader",
+        accept_multiple_files=False,
+    )
+    if fleet_upload:
+        is_valid, msg, df = validate_upload(fleet_upload, FLEET_COLS)
+        if is_valid:
+            st.success(msg)
+            col1, col2 = st.columns([3, 1])
+            with col1:
+                st.info(f"✓ File contains {len(df)} rows and {len(df.columns)} columns")
+            with col2:
+                if st.button("Save Fleet Events", key="save_fleet"):
+                    file_path = DATA_DIR / "fleet_events.csv"
+                    if save_uploaded_file(file_path, df):
+                        st.success(f"✓ Saved! Refresh to see changes.")
+        else:
+            st.error(msg)
+
+    st.markdown("---")
+
+    # Incident Reports Upload
+    st.markdown("### Incident Reports")
+    incident_upload = st.file_uploader(
+        "Upload incident_reports.csv",
+        type="csv",
+        key="incident_uploader",
+        accept_multiple_files=False,
+    )
+    if incident_upload:
+        is_valid, msg, df = validate_upload(incident_upload, INCIDENT_COLS)
+        if is_valid:
+            st.success(msg)
+            col1, col2 = st.columns([3, 1])
+            with col1:
+                st.info(f"✓ File contains {len(df)} rows and {len(df.columns)} columns")
+            with col2:
+                if st.button("Save Incident Reports", key="save_incident"):
+                    file_path = DATA_DIR / "incident_reports.csv"
+                    if save_uploaded_file(file_path, df):
+                        st.success(f"✓ Saved! Refresh to see changes.")
+        else:
+            st.error(msg)
+
+    st.markdown("---")
+
+    # Utility Strikes Upload
+    st.markdown("### Utility Strikes")
+    utility_upload = st.file_uploader(
+        "Upload utility_strikes.csv",
+        type="csv",
+        key="utility_uploader",
+        accept_multiple_files=False,
+    )
+    if utility_upload:
+        is_valid, msg, df = validate_upload(utility_upload, UTILITY_COLS)
+        if is_valid:
+            st.success(msg)
+            col1, col2 = st.columns([3, 1])
+            with col1:
+                st.info(f"✓ File contains {len(df)} rows and {len(df.columns)} columns")
+            with col2:
+                if st.button("Save Utility Strikes", key="save_utility"):
+                    file_path = DATA_DIR / "utility_strikes.csv"
+                    if save_uploaded_file(file_path, df):
+                        st.success(f"✓ Saved! Refresh to see changes.")
+        else:
+            st.error(msg)
