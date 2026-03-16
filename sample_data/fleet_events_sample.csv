@@ -1,1 +1,5 @@
-
+Date,VehicleID,Driver,JobTitle,Crew,MilesDriven,EngineHours,SpeedingEvents,HarshBrakeEvents,HarshAccelEvents,SeatbeltViolations,DistractedDrivingEvents,VehicleAccidents,IdleHours
+3/9/2026,F150-23,Driver A,CDL Driver,Vac Truck,210,6.5,3,1,2,0,0,1,1.2
+3/10/2026,F350-12,Driver B,Locator,Pot Hole Crew,175,5.8,2,0,1,0,0,0,0.8
+3/11/2026,F250-09,Driver C,Equipment Operator,Equipment Operator,198,6.2,4,2,1,0,1,0,1.5
+3/12/2026,F450-02,Driver D,CDL Driver,Vac Truck,220,7.0,5,1,3,0,0,0,1.1
