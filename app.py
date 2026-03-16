@@ -2,292 +2,311 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import plotly.express as px
-import plotly.graph_objects as go
 from pathlib import Path
 
 st.set_page_config(page_title="PDI Risk Dashboard", layout="wide")
 
-# -----------------------------
-# Configuration
-# -----------------------------
-DATA_DIR = Path("data")
+# ============================================================
+# PATHS
+# ============================================================
+BASE_DIR = Path(__file__).parent
+DATA_DIR = BASE_DIR / "data"
+SAMPLE_DIR = BASE_DIR / "sample_data"
 
-REQUIRED_FILES = {
-    "loss_runs": "loss_runs.csv",
-    "payroll": "payroll_hours.csv",
-    "fleet": "fleet_events.csv",
-    "incidents": "incident_reports.csv",
-    "utility": "utility_strikes.csv",
+FILES = {
+    "loss_runs": "loss_runs_sample.csv",
+    "payroll": "payroll_hours_sample.csv",
+    "fleet": "fleet_events_sample.csv",
+    "incidents": "incident_reports_sample.csv",
+    "utility": "utility_strikes_sample.csv",
 }
 
-RISK_WEIGHTS = {
-    "utility_strike": 40,
-    "utility_strike_tolerance_zone": 25,
-    "missing_locate": 25,
-    "excavation_near_miss": 10,
-    "safety_violation": 5,
-    "vehicle_accident": 30,
-    "speeding_per_10": 5,
-    "harsh_braking_per_10": 4,
-    "harsh_accel_per_10": 3,
-    "seatbelt_violation": 10,
-    "distracted_driving": 15,
-    "recordable_injury": 25,
-    "lost_time_injury": 40,
-    "auto_liability_claim": 35,
-    "property_damage_claim": 15,
-}
+# ============================================================
+# HELPERS
+# ============================================================
+def load_csv(filename: str) -> pd.DataFrame:
+    """Load from /data first, then fall back to /sample_data."""
+    data_file = DATA_DIR / filename.replace("_sample", "")
+    sample_file = SAMPLE_DIR / filename
+
+    if data_file.exists():
+        return pd.read_csv(data_file)
+    if sample_file.exists():
+        return pd.read_csv(sample_file)
+
+    return pd.DataFrame()
 
 
-# -----------------------------
-# Helper Functions
-# -----------------------------
-def safe_read_csv(path: Path, columns=None):
-    if not path.exists():
-        return pd.DataFrame(columns=columns or [])
-    try:
-        return pd.read_csv(path)
-    except Exception as exc:
-        st.warning(f"Could not read {path.name}: {exc}")
-        return pd.DataFrame(columns=columns or [])
+def yes_no_to_int(series: pd.Series) -> pd.Series:
+    """Convert Yes/No style fields to 1/0."""
+    return (
+        series.astype(str)
+        .str.strip()
+        .str.lower()
+        .map({"yes": 1, "no": 0, "true": 1, "false": 0, "1": 1, "0": 0})
+        .fillna(0)
+        .astype(int)
+    )
 
 
-def normalize_text(series: pd.Series) -> pd.Series:
-    return series.astype(str).str.strip()
+def to_numeric_safe(df: pd.DataFrame, cols: list[str]) -> pd.DataFrame:
+    for col in cols:
+        if col in df.columns:
+            df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0)
+    return df
 
 
-def parse_dates(df: pd.DataFrame, date_cols):
-    for col in date_cols:
+def to_datetime_safe(df: pd.DataFrame, cols: list[str]) -> pd.DataFrame:
+    for col in cols:
         if col in df.columns:
             df[col] = pd.to_datetime(df[col], errors="coerce")
     return df
 
 
-def ensure_columns(df: pd.DataFrame, defaults: dict):
-    for col, default in defaults.items():
-        if col not in df.columns:
-            df[col] = default
-    return df
-
-
-def classify_risk(score: float) -> str:
-    if pd.isna(score):
-        return "Unknown"
+def risk_level(score: float) -> str:
     if score <= 20:
         return "Low"
-    if score <= 40:
+    elif score <= 40:
         return "Moderate"
-    if score <= 60:
+    elif score <= 60:
         return "High"
-    return "Severe"
+    else:
+        return "Severe"
 
 
-def risk_color(level: str) -> str:
-    return {
-        "Low": "#2e7d32",
-        "Moderate": "#f9a825",
-        "High": "#ef6c00",
-        "Severe": "#c62828",
-        "Unknown": "#616161",
-    }.get(level, "#616161")
+# ============================================================
+# LOAD DATA
+# ============================================================
+loss_df = load_csv(FILES["loss_runs"])
+payroll_df = load_csv(FILES["payroll"])
+fleet_df = load_csv(FILES["fleet"])
+incident_df = load_csv(FILES["incidents"])
+utility_df = load_csv(FILES["utility"])
 
+# ============================================================
+# EXPECTED COLUMNS
+# ============================================================
+LOSS_COLS = [
+    "ClaimNumber", "ClaimType", "IncidentDate", "ReportDate", "Crew",
+    "Supervisor", "EmployeeName", "BodyPart", "Cause", "Paid",
+    "Reserved", "TotalIncurred", "Recordable", "LostTime", "Status"
+]
 
-def load_data():
-    loss = safe_read_csv(
-        DATA_DIR / REQUIRED_FILES["loss_runs"],
-        [
-            "ClaimNumber", "ClaimType", "IncidentDate", "ReportDate", "Crew", "Supervisor",
-            "Cause", "BodyPart", "Paid", "Reserved", "TotalIncurred", "Status",
-            "Recordable", "LostTime"
-        ],
-    )
-    payroll = safe_read_csv(
-        DATA_DIR / REQUIRED_FILES["payroll"],
-        ["Year", "Month", "Crew", "HoursWorked", "Payroll", "Employees"],
-    )
-    fleet = safe_read_csv(
-        DATA_DIR / REQUIRED_FILES["fleet"],
-        [
-            "Date", "Vehicle", "Driver", "Crew", "Miles", "SpeedingEvents", "HarshBrake",
-            "HarshAccel", "SeatbeltViolations", "DistractedDrivingEvents", "VehicleAccidents"
-        ],
-    )
-    incidents = safe_read_csv(
-        DATA_DIR / REQUIRED_FILES["incidents"],
-        [
-            "Date", "IncidentType", "Crew", "Supervisor", "Equipment", "Description",
-            "NearMiss", "RecordableInjury", "LostTimeInjury", "SafetyViolation"
-        ],
-    )
-    utility = safe_read_csv(
-        DATA_DIR / REQUIRED_FILES["utility"],
-        [
-            "Date", "Crew", "UtilityType", "Located", "InsideToleranceZone", "RepairCost",
-            "MissingLocate", "Notes"
-        ],
-    )
+PAYROLL_COLS = [
+    "Year", "Month", "Crew", "HoursWorked", "Employees", "Payroll"
+]
 
-    loss = parse_dates(loss, ["IncidentDate", "ReportDate"])
-    payroll = ensure_columns(payroll, {"HoursWorked": 0, "Payroll": 0, "Employees": 0})
-    fleet = parse_dates(fleet, ["Date"])
-    incidents = parse_dates(incidents, ["Date"])
-    utility = parse_dates(utility, ["Date"])
+FLEET_COLS = [
+    "Date", "VehicleID", "Driver", "JobTitle", "Crew", "MilesDriven",
+    "EngineHours", "SpeedingEvents", "HarshBrakeEvents",
+    "HarshAccelEvents", "SeatbeltViolations",
+    "DistractedDrivingEvents", "VehicleAccidents", "IdleHours"
+]
 
-    for df, col in [
-        (loss, "Crew"), (payroll, "Crew"), (fleet, "Crew"), (incidents, "Crew"), (utility, "Crew")
-    ]:
-        if col in df.columns:
-            df[col] = normalize_text(df[col])
+INCIDENT_COLS = [
+    "IncidentID", "Date", "Time", "Crew", "Supervisor", "EmployeeName",
+    "IncidentType", "EquipmentInvolved", "CitationIssued",
+    "SafetyViolation", "Location", "HiringContractor"
+]
 
-    numeric_defaults = {
-        "Paid": 0, "Reserved": 0, "TotalIncurred": 0,
-        "Miles": 0, "SpeedingEvents": 0, "HarshBrake": 0, "HarshAccel": 0,
-        "SeatbeltViolations": 0, "DistractedDrivingEvents": 0, "VehicleAccidents": 0,
-        "NearMiss": 0, "RecordableInjury": 0, "LostTimeInjury": 0, "SafetyViolation": 0,
-        "RepairCost": 0, "MissingLocate": 0,
-    }
-    for df in [loss, fleet, incidents, utility]:
-        for col, default in numeric_defaults.items():
-            if col in df.columns:
-                df[col] = pd.to_numeric(df[col], errors="coerce").fillna(default)
+UTILITY_COLS = [
+    "StrikeID", "Date", "Time", "Crew", "JobTitle", "Supervisor",
+    "EquipmentUsed", "UtilityType", "Located", "ToleranceZone",
+    "RepairCost", "CitationIssued", "Location", "HiringContractor"
+]
 
-    if "HoursWorked" in payroll.columns:
-        payroll["HoursWorked"] = pd.to_numeric(payroll["HoursWorked"], errors="coerce").fillna(0)
-    if "Payroll" in payroll.columns:
-        payroll["Payroll"] = pd.to_numeric(payroll["Payroll"], errors="coerce").fillna(0)
+# Ensure missing dataframes still have expected headers
+if loss_df.empty:
+    loss_df = pd.DataFrame(columns=LOSS_COLS)
 
-    return loss, payroll, fleet, incidents, utility
+if payroll_df.empty:
+    payroll_df = pd.DataFrame(columns=PAYROLL_COLS)
 
+if fleet_df.empty:
+    fleet_df = pd.DataFrame(columns=FLEET_COLS)
 
-def build_crew_risk_table(loss, payroll, fleet, incidents, utility):
-    hours = payroll.groupby("Crew", dropna=False)["HoursWorked"].sum().rename("HoursWorked")
+if incident_df.empty:
+    incident_df = pd.DataFrame(columns=INCIDENT_COLS)
 
-    operational = pd.DataFrame(index=hours.index)
-    if not utility.empty:
-        temp = utility.groupby("Crew").agg(
-            utility_strikes=("UtilityType", "count"),
-            inside_tolerance=("InsideToleranceZone", lambda s: pd.to_numeric(s, errors='coerce').fillna(0).sum()),
-            missing_locate=("MissingLocate", "sum"),
-            repair_cost=("RepairCost", "sum"),
-        )
-        operational = operational.join(temp, how="outer")
-    if not incidents.empty:
-        near = incidents.groupby("Crew").agg(
-            excavation_near_miss=("NearMiss", "sum"),
-            safety_violations=("SafetyViolation", "sum"),
-        )
-        operational = operational.join(near, how="outer")
+if utility_df.empty:
+    utility_df = pd.DataFrame(columns=UTILITY_COLS)
 
-    operational = operational.fillna(0)
-    operational["OperationalPoints"] = (
-        operational.get("utility_strikes", 0) * RISK_WEIGHTS["utility_strike"] +
-        operational.get("inside_tolerance", 0) * RISK_WEIGHTS["utility_strike_tolerance_zone"] +
-        operational.get("missing_locate", 0) * RISK_WEIGHTS["missing_locate"] +
-        operational.get("excavation_near_miss", 0) * RISK_WEIGHTS["excavation_near_miss"] +
-        operational.get("safety_violations", 0) * RISK_WEIGHTS["safety_violation"]
-    )
+# ============================================================
+# CLEAN / NORMALIZE DATA
+# ============================================================
+loss_df = to_datetime_safe(loss_df, ["IncidentDate", "ReportDate"])
+payroll_df = to_numeric_safe(payroll_df, ["HoursWorked", "Employees", "Payroll"])
+fleet_df = to_datetime_safe(fleet_df, ["Date"])
+fleet_df = to_numeric_safe(
+    fleet_df,
+    [
+        "MilesDriven", "EngineHours", "SpeedingEvents", "HarshBrakeEvents",
+        "HarshAccelEvents", "SeatbeltViolations",
+        "DistractedDrivingEvents", "VehicleAccidents", "IdleHours"
+    ],
+)
+incident_df = to_datetime_safe(incident_df, ["Date"])
+utility_df = to_datetime_safe(utility_df, ["Date"])
+utility_df = to_numeric_safe(utility_df, ["RepairCost"])
 
-    fleet_agg = pd.DataFrame(index=hours.index)
-    if not fleet.empty:
-        temp = fleet.groupby("Crew").agg(
-            Miles=("Miles", "sum"),
-            SpeedingEvents=("SpeedingEvents", "sum"),
-            HarshBrake=("HarshBrake", "sum"),
-            HarshAccel=("HarshAccel", "sum"),
-            SeatbeltViolations=("SeatbeltViolations", "sum"),
-            DistractedDrivingEvents=("DistractedDrivingEvents", "sum"),
-            VehicleAccidents=("VehicleAccidents", "sum"),
-        )
-        fleet_agg = fleet_agg.join(temp, how="outer")
-    fleet_agg = fleet_agg.fillna(0)
-    fleet_agg["FleetPoints"] = (
-        fleet_agg.get("VehicleAccidents", 0) * RISK_WEIGHTS["vehicle_accident"] +
-        np.floor(fleet_agg.get("SpeedingEvents", 0) / 10) * RISK_WEIGHTS["speeding_per_10"] +
-        np.floor(fleet_agg.get("HarshBrake", 0) / 10) * RISK_WEIGHTS["harsh_braking_per_10"] +
-        np.floor(fleet_agg.get("HarshAccel", 0) / 10) * RISK_WEIGHTS["harsh_accel_per_10"] +
-        fleet_agg.get("SeatbeltViolations", 0) * RISK_WEIGHTS["seatbelt_violation"] +
-        fleet_agg.get("DistractedDrivingEvents", 0) * RISK_WEIGHTS["distracted_driving"]
-    )
+if "Recordable" in loss_df.columns:
+    loss_df["Recordable"] = yes_no_to_int(loss_df["Recordable"])
 
-    claim_agg = pd.DataFrame(index=hours.index)
-    if not loss.empty:
-        loss = ensure_columns(loss, {"Recordable": 0, "LostTime": 0, "ClaimType": "Unknown"})
-        temp = loss.groupby("Crew").agg(
-            ClaimCount=("ClaimNumber", "count"),
-            TotalIncurred=("TotalIncurred", "sum"),
-            RecordableClaims=("Recordable", "sum"),
-            LostTimeClaims=("LostTime", "sum"),
-            AutoClaims=("ClaimType", lambda s: (s.astype(str).str.contains("auto", case=False, na=False)).sum()),
-            PropertyDamageClaims=("ClaimType", lambda s: (s.astype(str).str.contains("property", case=False, na=False)).sum()),
-        )
-        claim_agg = claim_agg.join(temp, how="outer")
-    claim_agg = claim_agg.fillna(0)
-    claim_agg["ClaimPoints"] = (
-        claim_agg.get("RecordableClaims", 0) * RISK_WEIGHTS["recordable_injury"] +
-        claim_agg.get("LostTimeClaims", 0) * RISK_WEIGHTS["lost_time_injury"] +
-        claim_agg.get("AutoClaims", 0) * RISK_WEIGHTS["auto_liability_claim"] +
-        claim_agg.get("PropertyDamageClaims", 0) * RISK_WEIGHTS["property_damage_claim"]
-    )
+if "LostTime" in loss_df.columns:
+    loss_df["LostTime"] = yes_no_to_int(loss_df["LostTime"])
 
-    df = pd.concat([hours, operational, fleet_agg, claim_agg], axis=1).fillna(0)
-    df = df.reset_index()
-    df["OperationalScore"] = np.where(df["HoursWorked"] > 0, (df["OperationalPoints"] / df["HoursWorked"]) * 10000, 0)
-    df["ClaimScore"] = np.where(df["HoursWorked"] > 0, (df["ClaimPoints"] / df["HoursWorked"]) * 10000, 0)
-    df["FleetScore"] = np.where(df["Miles"] > 0, (df["FleetPoints"] / df["Miles"]) * 10000, 0)
-    df["TotalRiskScore"] = df[["OperationalScore", "FleetScore", "ClaimScore"]].sum(axis=1)
-    df["RiskLevel"] = df["TotalRiskScore"].apply(classify_risk)
-    return df.sort_values("TotalRiskScore", ascending=False)
+if "CitationIssued" in incident_df.columns:
+    incident_df["CitationIssued_Flag"] = yes_no_to_int(incident_df["CitationIssued"])
+else:
+    incident_df["CitationIssued_Flag"] = 0
 
+if "SafetyViolation" in incident_df.columns:
+    incident_df["SafetyViolation_Flag"] = yes_no_to_int(incident_df["SafetyViolation"])
+else:
+    incident_df["SafetyViolation_Flag"] = 0
 
-def monthly_claim_trend(loss):
-    if loss.empty or "IncidentDate" not in loss.columns:
-        return pd.DataFrame(columns=["Month", "Claims", "Cost"])
-    df = loss.dropna(subset=["IncidentDate"]).copy()
-    if df.empty:
-        return pd.DataFrame(columns=["Month", "Claims", "Cost"])
-    df["Month"] = df["IncidentDate"].dt.to_period("M").astype(str)
-    out = df.groupby("Month").agg(Claims=("ClaimNumber", "count"), Cost=("TotalIncurred", "sum")).reset_index()
-    return out
+if "Located" in utility_df.columns:
+    utility_df["Located_Flag"] = yes_no_to_int(utility_df["Located"])
+else:
+    utility_df["Located_Flag"] = 0
 
+if "ToleranceZone" in utility_df.columns:
+    utility_df["ToleranceZone_Flag"] = yes_no_to_int(utility_df["ToleranceZone"])
+else:
+    utility_df["ToleranceZone_Flag"] = 0
 
-def monthly_fleet_trend(fleet):
-    if fleet.empty or "Date" not in fleet.columns:
-        return pd.DataFrame(columns=["Month", "SpeedingEvents", "HarshBrake", "VehicleAccidents"])
-    df = fleet.dropna(subset=["Date"]).copy()
-    df["Month"] = df["Date"].dt.to_period("M").astype(str)
-    return df.groupby("Month").agg(
+if "CitationIssued" in utility_df.columns:
+    utility_df["CitationIssued_Flag"] = yes_no_to_int(utility_df["CitationIssued"])
+else:
+    utility_df["CitationIssued_Flag"] = 0
+
+# Fill blanks for grouping
+for df, col in [
+    (loss_df, "Crew"),
+    (payroll_df, "Crew"),
+    (fleet_df, "Crew"),
+    (incident_df, "Crew"),
+    (utility_df, "Crew"),
+]:
+    if col in df.columns:
+        df[col] = df[col].fillna("Unknown")
+
+# ============================================================
+# RISK MODEL
+# ============================================================
+def build_crew_risk_table():
+    crew_hours = payroll_df.groupby("Crew", dropna=False)["HoursWorked"].sum().reset_index()
+    crew_hours.columns = ["Crew", "HoursWorked"]
+
+    # Operational risk from incidents + utility strikes
+    incident_counts = incident_df.groupby(["Crew", "IncidentType"]).size().unstack(fill_value=0).reset_index()
+    utility_counts = utility_df.groupby("Crew").agg(
+        UtilityStrikes=("StrikeID", "count"),
+        UtilityStrikeCost=("RepairCost", "sum"),
+        MissingLocates=("Located_Flag", lambda s: int((s == 0).sum())),
+        ToleranceZoneHits=("ToleranceZone_Flag", "sum"),
+    ).reset_index()
+
+    # Fleet risk
+    fleet_agg = fleet_df.groupby("Crew").agg(
+        MilesDriven=("MilesDriven", "sum"),
         SpeedingEvents=("SpeedingEvents", "sum"),
-        HarshBrake=("HarshBrake", "sum"),
+        HarshBrakeEvents=("HarshBrakeEvents", "sum"),
+        HarshAccelEvents=("HarshAccelEvents", "sum"),
+        SeatbeltViolations=("SeatbeltViolations", "sum"),
+        DistractedDrivingEvents=("DistractedDrivingEvents", "sum"),
         VehicleAccidents=("VehicleAccidents", "sum"),
     ).reset_index()
 
-
-def monthly_utility_trend(utility):
-    if utility.empty or "Date" not in utility.columns:
-        return pd.DataFrame(columns=["Month", "Strikes", "RepairCost"])
-    df = utility.dropna(subset=["Date"]).copy()
-    df["Month"] = df["Date"].dt.to_period("M").astype(str)
-    return df.groupby("Month").agg(
-        Strikes=("UtilityType", "count"),
-        RepairCost=("RepairCost", "sum"),
+    # Claim risk
+    claims_agg = loss_df.groupby("Crew").agg(
+        ClaimCount=("ClaimNumber", "count"),
+        TotalIncurred=("TotalIncurred", "sum"),
+        RecordableClaims=("Recordable", "sum"),
+        LostTimeClaims=("LostTime", "sum"),
     ).reset_index()
 
+    # Merge all
+    crew_risk = crew_hours.copy()
+    for part in [incident_counts, utility_counts, fleet_agg, claims_agg]:
+        crew_risk = crew_risk.merge(part, on="Crew", how="left")
 
-# -----------------------------
-# Data Load
-# -----------------------------
-loss, payroll, fleet, incidents, utility = load_data()
-crew_risk = build_crew_risk_table(loss, payroll, fleet, incidents, utility)
-claim_trend = monthly_claim_trend(loss)
-fleet_trend = monthly_fleet_trend(fleet)
-utility_trend = monthly_utility_trend(utility)
+    crew_risk = crew_risk.fillna(0)
 
-# -----------------------------
-# Sidebar
-# -----------------------------
-st.sidebar.title("PDI Risk Dashboard")
+    # Make sure these columns exist even if no data
+    for col in [
+        "Near Miss",
+        "Recordable Injury",
+        "Auto Accident",
+        "Utility Strike",
+        "Property Damage",
+        "Safety Violation",
+    ]:
+        if col not in crew_risk.columns:
+            crew_risk[col] = 0
+
+    # Operational points
+    crew_risk["OperationalPoints"] = (
+        crew_risk["UtilityStrikes"] * 40
+        + crew_risk["MissingLocates"] * 25
+        + crew_risk["ToleranceZoneHits"] * 25
+        + crew_risk["Near Miss"] * 10
+        + crew_risk["Safety Violation"] * 5
+        + crew_risk["Recordable Injury"] * 20
+    )
+
+    # Fleet points
+    crew_risk["FleetPoints"] = (
+        crew_risk["VehicleAccidents"] * 30
+        + (crew_risk["SpeedingEvents"] / 10.0) * 5
+        + (crew_risk["HarshBrakeEvents"] / 10.0) * 4
+        + (crew_risk["HarshAccelEvents"] / 10.0) * 3
+        + crew_risk["SeatbeltViolations"] * 10
+        + crew_risk["DistractedDrivingEvents"] * 15
+    )
+
+    # Claim points
+    crew_risk["ClaimPoints"] = (
+        crew_risk["RecordableClaims"] * 25
+        + crew_risk["LostTimeClaims"] * 40
+    )
+
+    # Normalize
+    crew_risk["OperationalScore"] = np.where(
+        crew_risk["HoursWorked"] > 0,
+        (crew_risk["OperationalPoints"] / crew_risk["HoursWorked"]) * 10000,
+        0,
+    )
+
+    crew_risk["ClaimScore"] = np.where(
+        crew_risk["HoursWorked"] > 0,
+        (crew_risk["ClaimPoints"] / crew_risk["HoursWorked"]) * 10000,
+        0,
+    )
+
+    crew_risk["FleetScore"] = np.where(
+        crew_risk["MilesDriven"] > 0,
+        (crew_risk["FleetPoints"] / crew_risk["MilesDriven"]) * 10000,
+        0,
+    )
+
+    crew_risk["TotalRiskScore"] = (
+        crew_risk["OperationalScore"] + crew_risk["FleetScore"] + crew_risk["ClaimScore"]
+    )
+
+    crew_risk["RiskLevel"] = crew_risk["TotalRiskScore"].apply(risk_level)
+
+    return crew_risk.sort_values("TotalRiskScore", ascending=False)
+
+
+crew_risk_df = build_crew_risk_table()
+
+# ============================================================
+# SIDEBAR
+# ============================================================
+st.sidebar.title("Navigation")
 page = st.sidebar.radio(
-    "Select View",
+    "Go to",
     [
         "Executive Overview",
         "Crew Risk Ranking",
@@ -298,217 +317,217 @@ page = st.sidebar.radio(
     ],
 )
 
-if not crew_risk.empty:
-    crews = ["All"] + sorted([c for c in crew_risk["Crew"].dropna().unique() if str(c).strip()])
-else:
-    crews = ["All"]
-selected_crew = st.sidebar.selectbox("Crew Filter", crews)
+# ============================================================
+# HEADER
+# ============================================================
+st.title("PDI Risk Dashboard")
+st.caption("Claims, fleet, utility strike, and incident analytics for PDI Construction")
 
-if selected_crew != "All":
-    crew_risk_view = crew_risk[crew_risk["Crew"] == selected_crew]
-    loss_view = loss[loss["Crew"] == selected_crew] if "Crew" in loss.columns else loss
-    fleet_view = fleet[fleet["Crew"] == selected_crew] if "Crew" in fleet.columns else fleet
-    utility_view = utility[utility["Crew"] == selected_crew] if "Crew" in utility.columns else utility
-else:
-    crew_risk_view = crew_risk
-    loss_view = loss
-    fleet_view = fleet
-    utility_view = utility
-
-# -----------------------------
-# Header
-# -----------------------------
-st.title("PDI Construction Risk Dashboard")
-st.caption("Construction risk dashboard for claims, fleet, utility strikes, and crew risk scoring.")
-
-# -----------------------------
-# Executive Overview
-# -----------------------------
+# ============================================================
+# PAGE: EXECUTIVE OVERVIEW
+# ============================================================
 if page == "Executive Overview":
-    total_claims = len(loss_view)
-    total_cost = pd.to_numeric(loss_view.get("TotalIncurred", pd.Series(dtype=float)), errors="coerce").fillna(0).sum()
-    total_strikes = len(utility_view)
-    total_vehicle_accidents = pd.to_numeric(fleet_view.get("VehicleAccidents", pd.Series(dtype=float)), errors="coerce").fillna(0).sum()
-    avg_risk = crew_risk_view["TotalRiskScore"].mean() if not crew_risk_view.empty else 0
+    total_claims = len(loss_df)
+    total_claim_cost = loss_df["TotalIncurred"].sum() if "TotalIncurred" in loss_df.columns else 0
+    total_strikes = len(utility_df)
+    total_vehicle_accidents = fleet_df["VehicleAccidents"].sum() if "VehicleAccidents" in fleet_df.columns else 0
+    avg_risk_score = crew_risk_df["TotalRiskScore"].mean() if not crew_risk_df.empty else 0
 
     c1, c2, c3, c4, c5 = st.columns(5)
     c1.metric("Total Claims", f"{int(total_claims)}")
-    c2.metric("Total Claim Cost", f"${total_cost:,.0f}")
+    c2.metric("Total Claim Cost", f"${total_claim_cost:,.0f}")
     c3.metric("Utility Strikes", f"{int(total_strikes)}")
     c4.metric("Vehicle Accidents", f"{int(total_vehicle_accidents)}")
-    c5.metric("Avg Crew Risk Score", f"{avg_risk:,.1f}")
-
-    left, right = st.columns(2)
-    with left:
-        st.subheader("Claim Cost Trend")
-        if not claim_trend.empty:
-            fig = px.bar(claim_trend, x="Month", y="Cost")
-            st.plotly_chart(fig, use_container_width=True)
-        else:
-            st.info("No claim trend data available yet.")
-
-    with right:
-        st.subheader("Utility Strike Trend")
-        if not utility_trend.empty:
-            fig = px.line(utility_trend, x="Month", y="Strikes", markers=True)
-            st.plotly_chart(fig, use_container_width=True)
-        else:
-            st.info("No utility strike data available yet.")
+    c5.metric("Avg Crew Risk Score", f"{avg_risk_score:,.1f}")
 
     st.subheader("Crew Risk Summary")
-    if not crew_risk_view.empty:
-        show = crew_risk_view[["Crew", "HoursWorked", "OperationalScore", "FleetScore", "ClaimScore", "TotalRiskScore", "RiskLevel"]].copy()
-        st.dataframe(show, use_container_width=True)
+    if not crew_risk_df.empty:
+        show_cols = [
+            "Crew", "HoursWorked", "OperationalScore", "FleetScore",
+            "ClaimScore", "TotalRiskScore", "RiskLevel"
+        ]
+        st.dataframe(crew_risk_df[show_cols], use_container_width=True)
     else:
-        st.info("No crew risk data available yet.")
+        st.info("No crew risk data available.")
 
-# -----------------------------
-# Crew Risk Ranking
-# -----------------------------
+# ============================================================
+# PAGE: CREW RISK RANKING
+# ============================================================
 elif page == "Crew Risk Ranking":
     st.subheader("Crew Risk Ranking")
-    if crew_risk_view.empty:
-        st.info("No crew risk data available yet.")
+
+    if crew_risk_df.empty:
+        st.info("No crew risk data available.")
     else:
         fig = px.bar(
-            crew_risk_view,
+            crew_risk_df,
             x="Crew",
             y="TotalRiskScore",
             color="RiskLevel",
+            title="Total Risk Score by Crew",
             color_discrete_map={
-                "Low": "#2e7d32",
-                "Moderate": "#f9a825",
-                "High": "#ef6c00",
-                "Severe": "#c62828",
+                "Low": "green",
+                "Moderate": "gold",
+                "High": "orange",
+                "Severe": "red",
             },
-            hover_data=["OperationalScore", "FleetScore", "ClaimScore", "HoursWorked"],
         )
         st.plotly_chart(fig, use_container_width=True)
+
         st.dataframe(
-            crew_risk_view[[
-                "Crew", "HoursWorked", "Miles", "OperationalPoints", "FleetPoints", "ClaimPoints",
-                "OperationalScore", "FleetScore", "ClaimScore", "TotalRiskScore", "RiskLevel"
-            ]],
+            crew_risk_df[
+                [
+                    "Crew",
+                    "HoursWorked",
+                    "MilesDriven",
+                    "OperationalPoints",
+                    "FleetPoints",
+                    "ClaimPoints",
+                    "OperationalScore",
+                    "FleetScore",
+                    "ClaimScore",
+                    "TotalRiskScore",
+                    "RiskLevel",
+                ]
+            ],
             use_container_width=True,
         )
 
-# -----------------------------
-# Claims Analytics
-# -----------------------------
+# ============================================================
+# PAGE: CLAIMS ANALYTICS
+# ============================================================
 elif page == "Claims Analytics":
     st.subheader("Claims Analytics")
-    if loss_view.empty:
-        st.info("No loss run data available yet.")
+
+    if loss_df.empty:
+        st.info("No claim data available.")
     else:
-        top1, top2 = st.columns(2)
-        with top1:
-            if "ClaimType" in loss_view.columns:
-                claim_type = loss_view.groupby("ClaimType").size().reset_index(name="Claims")
-                fig = px.pie(claim_type, names="ClaimType", values="Claims", title="Claims by Type")
-                st.plotly_chart(fig, use_container_width=True)
-        with top2:
-            if "Cause" in loss_view.columns:
-                cause = loss_view.groupby("Cause").size().reset_index(name="Claims").sort_values("Claims", ascending=False).head(10)
-                fig = px.bar(cause, x="Claims", y="Cause", orientation="h", title="Top Claim Causes")
+        left, right = st.columns(2)
+
+        with left:
+            if "ClaimType" in loss_df.columns:
+                claim_type_counts = loss_df.groupby("ClaimType").size().reset_index(name="Count")
+                fig = px.pie(claim_type_counts, names="ClaimType", values="Count", title="Claims by Type")
                 st.plotly_chart(fig, use_container_width=True)
 
-        if {"IncidentDate", "ReportDate"}.issubset(loss_view.columns):
-            lag = loss_view.copy()
-            lag["LagDays"] = (lag["ReportDate"] - lag["IncidentDate"]).dt.days
-            lag = lag.dropna(subset=["LagDays"])
-            if not lag.empty:
+        with right:
+            if "Cause" in loss_df.columns:
+                cause_counts = (
+                    loss_df.groupby("Cause").size().reset_index(name="Count").sort_values("Count", ascending=False)
+                )
+                fig = px.bar(cause_counts, x="Cause", y="Count", title="Claims by Cause")
+                st.plotly_chart(fig, use_container_width=True)
+
+        if {"IncidentDate", "ReportDate"}.issubset(loss_df.columns):
+            lag_df = loss_df.copy()
+            lag_df["LagDays"] = (lag_df["ReportDate"] - lag_df["IncidentDate"]).dt.days
+            lag_df = lag_df.dropna(subset=["LagDays"])
+
+            if not lag_df.empty:
                 st.subheader("Claim Reporting Lag")
-                st.metric("Average Lag Days", f"{lag['LagDays'].mean():.1f}")
-                fig = px.histogram(lag, x="LagDays", nbins=20)
+                st.metric("Average Lag Days", f"{lag_df['LagDays'].mean():.1f}")
+                fig = px.histogram(lag_df, x="LagDays", nbins=15, title="Claim Lag Distribution")
                 st.plotly_chart(fig, use_container_width=True)
 
-# -----------------------------
-# Fleet Risk
-# -----------------------------
+# ============================================================
+# PAGE: FLEET RISK
+# ============================================================
 elif page == "Fleet Risk":
     st.subheader("Fleet Risk")
-    if fleet_view.empty:
-        st.info("No fleet data available yet.")
+
+    if fleet_df.empty:
+        st.info("No fleet data available.")
     else:
-        c1, c2, c3 = st.columns(3)
-        c1.metric("Miles Driven", f"{fleet_view['Miles'].sum():,.0f}")
-        c2.metric("Speeding Events", f"{fleet_view['SpeedingEvents'].sum():,.0f}")
-        c3.metric("Vehicle Accidents", f"{fleet_view['VehicleAccidents'].sum():,.0f}")
+        c1, c2, c3, c4 = st.columns(4)
+        c1.metric("Miles Driven", f"{fleet_df['MilesDriven'].sum():,.0f}")
+        c2.metric("Speeding Events", f"{fleet_df['SpeedingEvents'].sum():,.0f}")
+        c3.metric("Harsh Brake Events", f"{fleet_df['HarshBrakeEvents'].sum():,.0f}")
+        c4.metric("Vehicle Accidents", f"{fleet_df['VehicleAccidents'].sum():,.0f}")
 
-        if not fleet_trend.empty:
-            fig = go.Figure()
-            fig.add_trace(go.Scatter(x=fleet_trend["Month"], y=fleet_trend["SpeedingEvents"], name="Speeding"))
-            fig.add_trace(go.Scatter(x=fleet_trend["Month"], y=fleet_trend["HarshBrake"], name="Harsh Braking"))
-            st.plotly_chart(fig, use_container_width=True)
+        by_driver = fleet_df.groupby("Driver").agg(
+            MilesDriven=("MilesDriven", "sum"),
+            SpeedingEvents=("SpeedingEvents", "sum"),
+            HarshBrakeEvents=("HarshBrakeEvents", "sum"),
+            HarshAccelEvents=("HarshAccelEvents", "sum"),
+            VehicleAccidents=("VehicleAccidents", "sum"),
+        ).reset_index()
 
-        by_driver = fleet_view.groupby("Driver", dropna=False).agg(
-            Miles=("Miles", "sum"),
-            Speeding=("SpeedingEvents", "sum"),
-            HarshBrake=("HarshBrake", "sum"),
-            HarshAccel=("HarshAccel", "sum"),
-            Accidents=("VehicleAccidents", "sum"),
-        ).reset_index().sort_values("Speeding", ascending=False)
-        st.subheader("Driver Event Summary")
+        fig = px.bar(by_driver, x="Driver", y="SpeedingEvents", title="Speeding Events by Driver")
+        st.plotly_chart(fig, use_container_width=True)
+
         st.dataframe(by_driver, use_container_width=True)
 
-# -----------------------------
-# Utility Strike Tracker
-# -----------------------------
+# ============================================================
+# PAGE: UTILITY STRIKE TRACKER
+# ============================================================
 elif page == "Utility Strike Tracker":
     st.subheader("Utility Strike Tracker")
-    if utility_view.empty:
-        st.info("No utility strike data available yet.")
+
+    if utility_df.empty:
+        st.info("No utility strike data available.")
     else:
         c1, c2, c3 = st.columns(3)
-        c1.metric("Total Strikes", f"{len(utility_view):,}")
-        c2.metric("Total Repair Cost", f"${utility_view['RepairCost'].sum():,.0f}")
-        c3.metric("Avg Repair Cost", f"${utility_view['RepairCost'].mean():,.0f}" if len(utility_view) else "$0")
+        c1.metric("Total Strikes", f"{len(utility_df):,}")
+        c2.metric("Total Repair Cost", f"${utility_df['RepairCost'].sum():,.0f}")
+        c3.metric("Average Repair Cost", f"${utility_df['RepairCost'].mean():,.0f}")
 
-        by_type = utility_view.groupby("UtilityType").size().reset_index(name="Strikes")
-        fig = px.bar(by_type, x="UtilityType", y="Strikes", title="Strikes by Utility Type")
-        st.plotly_chart(fig, use_container_width=True)
+        left, right = st.columns(2)
 
-        by_crew = utility_view.groupby("Crew").agg(Strikes=("UtilityType", "count"), RepairCost=("RepairCost", "sum")).reset_index()
-        fig = px.bar(by_crew, x="Crew", y="Strikes", hover_data=["RepairCost"], title="Strikes by Crew")
-        st.plotly_chart(fig, use_container_width=True)
+        with left:
+            by_type = utility_df.groupby("UtilityType").size().reset_index(name="Count")
+            fig = px.bar(by_type, x="UtilityType", y="Count", title="Strikes by Utility Type")
+            st.plotly_chart(fig, use_container_width=True)
 
-        st.dataframe(utility_view, use_container_width=True)
+        with right:
+            by_contractor = utility_df.groupby("HiringContractor").agg(
+                Count=("StrikeID", "count"),
+                RepairCost=("RepairCost", "sum"),
+            ).reset_index()
+            fig = px.bar(by_contractor, x="HiringContractor", y="RepairCost", title="Repair Cost by Hiring Contractor")
+            st.plotly_chart(fig, use_container_width=True)
 
-# -----------------------------
-# Data Health
-# -----------------------------
-else:
+        st.dataframe(utility_df, use_container_width=True)
+
+# ============================================================
+# PAGE: DATA HEALTH
+# ============================================================
+elif page == "Data Health":
     st.subheader("Data Health Check")
+
     health = pd.DataFrame(
         [
-            {"Dataset": "Loss Runs", "Rows": len(loss), "File": REQUIRED_FILES["loss_runs"], "Exists": (DATA_DIR / REQUIRED_FILES["loss_runs"]).exists()},
-            {"Dataset": "Payroll / Hours", "Rows": len(payroll), "File": REQUIRED_FILES["payroll"], "Exists": (DATA_DIR / REQUIRED_FILES["payroll"]).exists()},
-            {"Dataset": "Fleet Events", "Rows": len(fleet), "File": REQUIRED_FILES["fleet"], "Exists": (DATA_DIR / REQUIRED_FILES["fleet"]).exists()},
-            {"Dataset": "Incident Reports", "Rows": len(incidents), "File": REQUIRED_FILES["incidents"], "Exists": (DATA_DIR / REQUIRED_FILES["incidents"]).exists()},
-            {"Dataset": "Utility Strikes", "Rows": len(utility), "File": REQUIRED_FILES["utility"], "Exists": (DATA_DIR / REQUIRED_FILES["utility"]).exists()},
+            {"Dataset": "Loss Runs", "Rows": len(loss_df), "Columns": ", ".join(loss_df.columns)},
+            {"Dataset": "Payroll Hours", "Rows": len(payroll_df), "Columns": ", ".join(payroll_df.columns)},
+            {"Dataset": "Fleet Events", "Rows": len(fleet_df), "Columns": ", ".join(fleet_df.columns)},
+            {"Dataset": "Incident Reports", "Rows": len(incident_df), "Columns": ", ".join(incident_df.columns)},
+            {"Dataset": "Utility Strikes", "Rows": len(utility_df), "Columns": ", ".join(utility_df.columns)},
         ]
     )
+
     st.dataframe(health, use_container_width=True)
 
-    st.markdown("### Expected Repository Structure")
+    st.markdown("### Expected File Names")
     st.code(
-        """PDI_Risk_Dashboard/
-├── app.py
-├── requirements.txt
-└── data/
-    ├── loss_runs.csv
-    ├── payroll_hours.csv
-    ├── fleet_events.csv
-    ├── incident_reports.csv
-    └── utility_strikes.csv
-"""
+        """loss_runs.csv or loss_runs_sample.csv
+payroll_hours.csv or payroll_hours_sample.csv
+fleet_events.csv or fleet_events_sample.csv
+incident_reports.csv or incident_reports_sample.csv
+utility_strikes.csv or utility_strikes_sample.csv"""
     )
 
-    st.markdown("### requirements.txt")
-    st.code(
-        """streamlit
-pandas
-numpy
-plotly
-"""
-    )
+    st.markdown("### Expected Column Headers")
+
+    st.markdown("**loss_runs**")
+    st.code(",".join(LOSS_COLS))
+
+    st.markdown("**payroll_hours**")
+    st.code(",".join(PAYROLL_COLS))
+
+    st.markdown("**fleet_events**")
+    st.code(",".join(FLEET_COLS))
+
+    st.markdown("**incident_reports**")
+    st.code(",".join(INCIDENT_COLS))
+
+    st.markdown("**utility_strikes**")
+    st.code(",".join(UTILITY_COLS))
