@@ -1,1 +1,6 @@
-
+IncidentID,Date,Time,Crew,Supervisor,EmployeeName,IncidentType,EquipmentInvolved,CitationIssued,SafetyViolation,Location,HiringContractor
+AA1,3/9/2026,12:30,Vac Truck,,Driver A,Auto Accident,Vac Truck,Yes,Yes,Stream7,APS
+WC1,3/10/2026,1:00,Pot Hole Crew,,Worker A,Recordable Injury,Shovel,No,No,91st & Lower Buckeye,APS
+GL1,3/11/2026,1:30,Equipment Operator,,Operator A,Utility Strike,Excavator,Yes,Yes,Frye Rd,SRP
+AA2,3/12/2026,2:30,Vac Truck,,Driver B,Auto Accident,Semi Truck,No,Yes,Northern & 37th Ave,Haydon
+GL2,3/13/2026,4:00,Locator,,Locator A,Utility Strike,N/A,No,No,Stream7,Haydon
