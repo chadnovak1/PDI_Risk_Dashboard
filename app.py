@@ -124,7 +124,7 @@ utility_df = load_csv(FILES["utility"])
 LOSS_COLS = [
     "ClaimNumber", "ClaimType", "IncidentDate", "ReportDate", "Crew",
     "Supervisor", "EmployeeName", "BodyPart", "Cause", "Paid",
-    "Reserved", "TotalIncurred", "WC Claim Type", "LostTime", "Recordable", "Status"
+    "Reserved", "TotalIncurred", "WC Claim Type", "Status"
 ]
 
 PAYROLL_COLS = [
@@ -241,10 +241,21 @@ def calculate_claims_metrics():
     # Get claim metrics by crew
     claims_agg = loss_df.groupby("Crew").agg(
         TotalClaims=("ClaimNumber", "count"),
-        RecordableClaims=("Recordable", "sum"),
-        LostTimeClaims=("LostTime", "sum"),
         TotalClaimCost=("TotalIncurred", "sum"),
     ).reset_index()
+
+    # Add optional columns if present
+    if "Recordable" in loss_df.columns:
+        recordable = loss_df.groupby("Crew")["Recordable"].sum().reset_index(name="RecordableClaims")
+        claims_agg = claims_agg.merge(recordable, on="Crew", how="left")
+    else:
+        claims_agg["RecordableClaims"] = 0
+
+    if "LostTime" in loss_df.columns:
+        lost_time = loss_df.groupby("Crew")["LostTime"].sum().reset_index(name="LostTimeClaims")
+        claims_agg = claims_agg.merge(lost_time, on="Crew", how="left")
+    else:
+        claims_agg["LostTimeClaims"] = 0
 
     # Merge
     metrics_df = crew_hours.merge(claims_agg, on="Crew", how="left").fillna(0)
@@ -298,10 +309,19 @@ def get_metrics_by_period():
     loss_df_copy["Year"] = loss_df_copy["IncidentDate"].dt.year
     loss_df_copy["Month"] = loss_df_copy["IncidentDate"].dt.month
 
-    monthly_claims = loss_df_copy.groupby(["Year", "Month"]).agg(
-        RecordableClaims=("Recordable", "sum"),
-        LostTimeClaims=("LostTime", "sum"),
-    ).reset_index()
+    # Monthly claim metrics (Recordable/LostTime are optional)
+    agg_map = {}
+    if "Recordable" in loss_df_copy.columns:
+        agg_map["RecordableClaims"] = ("Recordable", "sum")
+    if "LostTime" in loss_df_copy.columns:
+        agg_map["LostTimeClaims"] = ("LostTime", "sum")
+
+    monthly_claims = loss_df_copy.groupby(["Year", "Month"]).agg(**agg_map).reset_index()
+
+    if "RecordableClaims" not in monthly_claims.columns:
+        monthly_claims["RecordableClaims"] = 0
+    if "LostTimeClaims" not in monthly_claims.columns:
+        monthly_claims["LostTimeClaims"] = 0
 
     # Merge
     trends_df = monthly_hours.merge(monthly_claims, on=["Year", "Month"], how="left").fillna(0)
@@ -353,9 +373,19 @@ def build_crew_risk_table():
     claims_agg = loss_df.groupby("Crew").agg(
         ClaimCount=("ClaimNumber", "count"),
         TotalIncurred=("TotalIncurred", "sum"),
-        RecordableClaims=("Recordable", "sum"),
-        LostTimeClaims=("LostTime", "sum"),
     ).reset_index()
+
+    if "Recordable" in loss_df.columns:
+        recordable = loss_df.groupby("Crew")["Recordable"].sum().reset_index(name="RecordableClaims")
+        claims_agg = claims_agg.merge(recordable, on="Crew", how="left")
+    else:
+        claims_agg["RecordableClaims"] = 0
+
+    if "LostTime" in loss_df.columns:
+        lost_time = loss_df.groupby("Crew")["LostTime"].sum().reset_index(name="LostTimeClaims")
+        claims_agg = claims_agg.merge(lost_time, on="Crew", how="left")
+    else:
+        claims_agg["LostTimeClaims"] = 0
 
     # Merge all
     crew_risk = crew_hours.copy()
@@ -849,7 +879,7 @@ elif page == "Upload Data":
         loss_ref = pd.DataFrame({"Column": LOSS_COLS, "Example": [
             "WC001", "Workers Comp", "3/10/2026", "3/11/2026", "Pot Hole Crew",
             "John Smith", "John Doe", "Hand", "Cut from hand tool", "1200",
-            "3000", "4200", "Medical Only", "No", "Yes", "Open"
+            "3000", "4200", "Medical Only", "Open"
         ]})
         st.dataframe(loss_ref, width='stretch', hide_index=True)
     
