@@ -186,9 +186,21 @@ utility_df = to_numeric_safe(utility_df, ["RepairCost"])
 
 if "Recordable" in loss_df.columns:
     loss_df["Recordable"] = yes_no_to_int(loss_df["Recordable"])
+elif "WC Claim Type" in loss_df.columns:
+    # Derive recordable from WC Claim Type (counts toward TRIR)
+    recordable_values = {"medical only", "lost time", "became lost time", "became medical only"}
+    loss_df["Recordable"] = (
+        loss_df["WC Claim Type"].astype(str).str.strip().str.lower().isin(recordable_values)
+    ).astype(int)
 
 if "LostTime" in loss_df.columns:
     loss_df["LostTime"] = yes_no_to_int(loss_df["LostTime"])
+elif "WC Claim Type" in loss_df.columns:
+    # Derive lost-time from WC Claim Type (counts toward DART)
+    lost_time_values = {"lost time", "became lost time"}
+    loss_df["LostTime"] = (
+        loss_df["WC Claim Type"].astype(str).str.strip().str.lower().isin(lost_time_values)
+    ).astype(int)
 
 if "CitationIssued" in incident_df.columns:
     incident_df["CitationIssued_Flag"] = yes_no_to_int(incident_df["CitationIssued"])
