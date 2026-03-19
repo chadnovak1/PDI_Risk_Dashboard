@@ -1,0 +1,10 @@
+# Streamlit configuration directory
+# This directory contains configuration and secrets
+
+# Never commit secrets
+secrets.toml
+.env
+.env.local
+
+# Streamlit cache
+.streamlit/
