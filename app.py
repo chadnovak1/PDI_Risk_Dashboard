@@ -887,7 +887,15 @@ elif page == "Upload Data":
     st.subheader("📋 Expected Column Reference")
     
     with st.expander("Loss Runs Columns", expanded=False):
-        st.info("**Note:** IncidentDate and ReportDate should be in MM/DD/YYYY format. Recordable and LostTime should be: Yes/No, True/False, or 1/0")
+        st.info(
+            """
+            **Note:**
+            - `IncidentDate` and `ReportDate` should be in MM/DD/YYYY format.
+            - `Recordable` and `LostTime` may be derived from `WC Claim Type` if missing.
+            - For TRIR/DART, `WC Claim Type` values **Medical Only**, **Lost Time**, **Became Lost Time**, and **Became Medical Only** count as **Yes / 1**.
+            - `Not Applicable` or `N/A` counts as **No / 0**.
+            """
+        )
         loss_ref = pd.DataFrame({"Column": LOSS_COLS, "Example": [
             "WC001", "Workers Comp", "3/10/2026", "3/11/2026", "Pot Hole Crew",
             "John Smith", "John Doe", "Hand", "Cut from hand tool", "1200",
