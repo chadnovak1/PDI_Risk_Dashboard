@@ -124,7 +124,7 @@ utility_df = load_csv(FILES["utility"])
 LOSS_COLS = [
     "ClaimNumber", "ClaimType", "IncidentDate", "ReportDate", "Crew",
     "Supervisor", "EmployeeName", "BodyPart", "Cause", "Paid",
-    "Reserved", "TotalIncurred", "Recordable", "LostTime", "Status"
+    "Reserved", "TotalIncurred", "WC Claim Type", "LostTime", "Recordable", "Status"
 ]
 
 PAYROLL_COLS = [
@@ -478,7 +478,7 @@ if page == "Executive Overview":
             "Crew", "HoursWorked", "OperationalScore", "FleetScore",
             "ClaimScore", "TotalRiskScore", "RiskLevel"
         ]
-        st.dataframe(crew_risk_df[show_cols], use_container_width=True)
+        st.dataframe(crew_risk_df[show_cols], width='stretch')
     else:
         st.info("No crew risk data available.")
 
@@ -504,7 +504,7 @@ elif page == "Crew Risk Ranking":
                 "Severe": "red",
             },
         )
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, width='stretch')
 
         st.dataframe(
             crew_risk_df[
@@ -522,7 +522,7 @@ elif page == "Crew Risk Ranking":
                     "RiskLevel",
                 ]
             ],
-            use_container_width=True,
+            width='stretch',
         )
 
 # ============================================================
@@ -560,7 +560,7 @@ elif page == "Claims Analytics":
                     color_continuous_scale="Reds",
                     labels={"TRIR": "TRIR (per 200k hrs)"}
                 )
-                st.plotly_chart(fig_trir, use_container_width=True)
+                st.plotly_chart(fig_trir, width='stretch')
             
             with right:
                 fig_dart = px.bar(
@@ -572,7 +572,7 @@ elif page == "Claims Analytics":
                     color_continuous_scale="Oranges",
                     labels={"DART": "DART (per 200k hrs)"}
                 )
-                st.plotly_chart(fig_dart, use_container_width=True)
+                st.plotly_chart(fig_dart, width='stretch')
         
         st.markdown("---")
         
@@ -589,7 +589,7 @@ elif page == "Claims Analytics":
                     color_continuous_scale="Blues",
                     labels={"IncidentFrequency": "Frequency (per 200k hrs)"}
                 )
-                st.plotly_chart(fig_freq, use_container_width=True)
+                st.plotly_chart(fig_freq, width='stretch')
         
         with right:
             if not claims_metrics.empty:
@@ -602,7 +602,7 @@ elif page == "Claims Analytics":
                     color_continuous_scale="Purples",
                     labels={"Severity": "Avg Cost per Claim ($)"}
                 )
-                st.plotly_chart(fig_severity, use_container_width=True)
+                st.plotly_chart(fig_severity, width='stretch')
         
         st.markdown("---")
         st.subheader("Trends Over Time")
@@ -620,7 +620,7 @@ elif page == "Claims Analytics":
                     markers=True,
                     labels={"TRIR": "TRIR (per 200k hrs)", "Date": "Month"}
                 )
-                st.plotly_chart(fig_trir_trend, use_container_width=True)
+                st.plotly_chart(fig_trir_trend, width='stretch')
             
             with right:
                 fig_dart_trend = px.line(
@@ -631,7 +631,7 @@ elif page == "Claims Analytics":
                     markers=True,
                     labels={"DART": "DART (per 200k hrs)", "Date": "Month"}
                 )
-                st.plotly_chart(fig_dart_trend, use_container_width=True)
+                st.plotly_chart(fig_dart_trend, width='stretch')
         
         st.markdown("---")
         st.subheader("Claims Distribution")
@@ -642,7 +642,7 @@ elif page == "Claims Analytics":
             if "ClaimType" in loss_df.columns:
                 claim_type_counts = loss_df.groupby("ClaimType").size().reset_index(name="Count")
                 fig = px.pie(claim_type_counts, names="ClaimType", values="Count", title="Claims by Type")
-                st.plotly_chart(fig, use_container_width=True)
+                st.plotly_chart(fig, width='stretch')
 
         with right:
             if "Cause" in loss_df.columns:
@@ -650,7 +650,7 @@ elif page == "Claims Analytics":
                     loss_df.groupby("Cause").size().reset_index(name="Count").sort_values("Count", ascending=False)
                 )
                 fig = px.bar(cause_counts, x="Cause", y="Count", title="Claims by Cause", height=400)
-                st.plotly_chart(fig, use_container_width=True)
+                st.plotly_chart(fig, width='stretch')
 
         if {"IncidentDate", "ReportDate"}.issubset(loss_df.columns):
             lag_df = loss_df.copy()
@@ -661,14 +661,14 @@ elif page == "Claims Analytics":
                 st.subheader("Claim Reporting Lag")
                 st.metric("Average Lag Days", f"{lag_df['LagDays'].mean():.1f}")
                 fig = px.histogram(lag_df, x="LagDays", nbins=15, title="Claim Lag Distribution")
-                st.plotly_chart(fig, use_container_width=True)
+                st.plotly_chart(fig, width='stretch')
 
         st.markdown("---")
         st.subheader("Detailed Metrics by Crew")
         if not claims_metrics.empty:
             display_cols = ["Crew", "TotalHours", "TotalClaims", "RecordableClaims", 
                           "LostTimeClaims", "TRIR", "DART", "IncidentFrequency", "Severity"]
-            st.dataframe(claims_metrics[display_cols], use_container_width=True)
+            st.dataframe(claims_metrics[display_cols], width='stretch')
 
 # ============================================================
 # PAGE: FLEET RISK
@@ -694,9 +694,9 @@ elif page == "Fleet Risk":
         ).reset_index()
 
         fig = px.bar(by_driver, x="Driver", y="SpeedingEvents", title="Speeding Events by Driver")
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, width='stretch')
 
-        st.dataframe(by_driver, use_container_width=True)
+        st.dataframe(by_driver, width='stretch')
 
 # ============================================================
 # PAGE: UTILITY STRIKE TRACKER
@@ -717,7 +717,7 @@ elif page == "Utility Strike Tracker":
         with left:
             by_type = utility_df.groupby("UtilityType").size().reset_index(name="Count")
             fig = px.bar(by_type, x="UtilityType", y="Count", title="Strikes by Utility Type")
-            st.plotly_chart(fig, use_container_width=True)
+            st.plotly_chart(fig, width='stretch')
 
         with right:
             by_contractor = utility_df.groupby("HiringContractor").agg(
@@ -725,9 +725,9 @@ elif page == "Utility Strike Tracker":
                 RepairCost=("RepairCost", "sum"),
             ).reset_index()
             fig = px.bar(by_contractor, x="HiringContractor", y="RepairCost", title="Repair Cost by Hiring Contractor")
-            st.plotly_chart(fig, use_container_width=True)
+            st.plotly_chart(fig, width='stretch')
 
-        st.dataframe(utility_df, use_container_width=True)
+        st.dataframe(utility_df, width='stretch')
 
 # ============================================================
 # PAGE: DATA HEALTH
@@ -745,7 +745,7 @@ elif page == "Data Health":
         ]
     )
 
-    st.dataframe(health, use_container_width=True)
+    st.dataframe(health, width='stretch')
 
     st.markdown("### Expected File Names")
     st.code(
@@ -849,16 +849,16 @@ elif page == "Upload Data":
         loss_ref = pd.DataFrame({"Column": LOSS_COLS, "Example": [
             "WC001", "Workers Comp", "3/10/2026", "3/11/2026", "Pot Hole Crew",
             "John Smith", "John Doe", "Hand", "Cut from hand tool", "1200",
-            "3000", "4200", "Yes", "No", "Open"
+            "3000", "4200", "Medical Only", "No", "Yes", "Open"
         ]})
-        st.dataframe(loss_ref, use_container_width=True, hide_index=True)
+        st.dataframe(loss_ref, width='stretch', hide_index=True)
     
     with st.expander("Payroll Hours Columns", expanded=False):
         st.info("**Note:** Year and Month should be numeric (e.g., 2026, 3)")
         payroll_ref = pd.DataFrame({"Column": PAYROLL_COLS, "Example": [
             "2026", "3", "Pot Hole Crew", "3900", "5", "87000"
         ]})
-        st.dataframe(payroll_ref, use_container_width=True, hide_index=True)
+        st.dataframe(payroll_ref, width='stretch', hide_index=True)
     
     with st.expander("Fleet Events Columns", expanded=False):
         st.info("**Note:** Date should be in MM/DD/YYYY format. All event counts should be numeric.")
@@ -866,7 +866,7 @@ elif page == "Upload Data":
             "3/10/2026", "F350-12", "Driver B", "Locator", "Pot Hole Crew",
             "175", "5.8", "2", "0", "1", "0", "0", "0", "0.8"
         ]})
-        st.dataframe(fleet_ref, use_container_width=True, hide_index=True)
+        st.dataframe(fleet_ref, width='stretch', hide_index=True)
     
     with st.expander("Incident Reports Columns", expanded=False):
         st.info("**Note:** Date should be in MM/DD/YYYY format. CitationIssued and SafetyViolation should be: Yes/No, True/False, or 1/0")
@@ -874,7 +874,7 @@ elif page == "Upload Data":
             "AA1", "3/9/2026", "12:30", "Vac Truck", "John Smith", "Driver A",
             "Auto Accident", "Vac Truck", "Yes", "Yes", "Stream7", "APS"
         ]})
-        st.dataframe(incident_ref, use_container_width=True, hide_index=True)
+        st.dataframe(incident_ref, width='stretch', hide_index=True)
     
     with st.expander("Utility Strikes Columns", expanded=False):
         st.info("**Note:** Date should be in MM/DD/YYYY format. Located, ToleranceZone, and CitationIssued should be: Yes/No, True/False, or 1/0. RepairCost should be numeric.")
@@ -882,7 +882,7 @@ elif page == "Upload Data":
             "GL1", "3/11/2026", "1:30", "Equipment Operator", "Operator", "John Smith",
             "Excavator", "Fiber", "Yes", "Yes", "4500", "Yes", "Frye Rd", "SRP"
         ]})
-        st.dataframe(utility_ref, use_container_width=True, hide_index=True)
+        st.dataframe(utility_ref, width='stretch', hide_index=True)
 
     st.markdown("---")
     st.subheader("⬆️ Upload Your Data")
