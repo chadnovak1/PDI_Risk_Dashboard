@@ -50,8 +50,16 @@ def yes_no_to_int(series: pd.Series) -> pd.Series:
 
 
 def to_numeric_safe(df: pd.DataFrame, cols: list[str]) -> pd.DataFrame:
+    # Convert columns to numeric, handling common CSV formatting (commas, dollar signs).
     for col in cols:
         if col in df.columns:
+            # Convert to string first to ensure .str methods are available
+            df[col] = (
+                df[col]
+                .astype(str)
+                .str.replace(r"[,$]", "", regex=True)
+                .replace({"nan": None, "None": None})
+            )
             df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0)
     return df
 
@@ -170,6 +178,7 @@ if utility_df.empty:
 # CLEAN / NORMALIZE DATA
 # ============================================================
 loss_df = to_datetime_safe(loss_df, ["IncidentDate", "ReportDate"])
+loss_df = to_numeric_safe(loss_df, ["Paid", "Reserved", "TotalIncurred"])
 payroll_df = to_numeric_safe(payroll_df, ["HoursWorked", "Employees", "Payroll"])
 fleet_df = to_datetime_safe(fleet_df, ["Date"])
 fleet_df = to_numeric_safe(
