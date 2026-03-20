@@ -4,6 +4,15 @@ import numpy as np
 import plotly.express as px
 from pathlib import Path
 
+
+try:
+    from fpdf import FPDF
+    fpdf_available = True
+except ImportError:
+    FPDF = None
+    fpdf_available = False
+
+
 st.set_page_config(page_title="PDI Risk Dashboard", layout="wide")
 
 # ============================================================
@@ -117,6 +126,30 @@ def generate_csv_download(df: pd.DataFrame, filename: str) -> bytes:
     return df.to_csv(index=False).encode('utf-8')
 
 
+def generate_pdf_from_summary(summary_data: dict) -> bytes:
+    """Generate a simple PDF bytes object from summary dictionary."""
+    if not fpdf_available:
+        raise RuntimeError("fpdf package is not available. Install via pip install fpdf")
+
+    pdf = FPDF()
+    pdf.set_auto_page_break(auto=True, margin=10)
+    pdf.add_page()
+    pdf.set_font("Arial", "B", 14)
+    pdf.cell(0, 10, "Injury Triage Summary", ln=True, align="C")
+    pdf.ln(4)
+
+    pdf.set_font("Arial", size=11)
+    for field, value in summary_data.items():
+        clean_value = str(value).replace("\n", " ")
+        line = f"{field}: {clean_value}"
+        pdf.multi_cell(0, 7, line)
+
+    out = pdf.output(dest="S")
+    if isinstance(out, str):
+        out = out.encode("latin-1")
+    return out
+
+
 # ============================================================
 # LOAD DATA
 # ============================================================
@@ -197,18 +230,21 @@ if "Recordable" in loss_df.columns:
     loss_df["Recordable"] = yes_no_to_int(loss_df["Recordable"])
 elif "WC Claim Type" in loss_df.columns:
     # Derive recordable from WC Claim Type (counts toward TRIR)
-    recordable_values = {"medical only", "lost time", "became lost time", "became medical only"}
-    loss_df["Recordable"] = (
-        loss_df["WC Claim Type"].astype(str).str.strip().str.lower().isin(recordable_values)
-    ).astype(int)
+    # - Anything mentioning "medical" or "lost" is treated as recordable.
+    # - "Not Applicable" / "N/A" is treated as non-recordable.
+    wc_type = loss_df["WC Claim Type"].astype(str).str.strip().str.lower()
+    loss_df["Recordable"] = (~wc_type.isin(["not applicable", "n/a", ""])) & (
+        wc_type.str.contains("medical") | wc_type.str.contains("lost")
+    )
+    loss_df["Recordable"] = loss_df["Recordable"].astype(int)
 
 if "LostTime" in loss_df.columns:
     loss_df["LostTime"] = yes_no_to_int(loss_df["LostTime"])
 elif "WC Claim Type" in loss_df.columns:
     # Derive lost-time from WC Claim Type (counts toward DART)
-    lost_time_values = {"lost time", "became lost time"}
+    wc_type = loss_df["WC Claim Type"].astype(str).str.strip().str.lower()
     loss_df["LostTime"] = (
-        loss_df["WC Claim Type"].astype(str).str.strip().str.lower().isin(lost_time_values)
+        wc_type.str.contains("lost")
     ).astype(int)
 
 if "CitationIssued" in incident_df.columns:
@@ -481,6 +517,323 @@ def build_crew_risk_table():
     return crew_risk.sort_values("TotalRiskScore", ascending=False)
 
 
+def render_injury_triage_tool():
+    st.subheader("Employee Injury Triage Tool")
+    st.caption("Use this decision tree to determine whether clinic referral is required.")
+
+    # Basic info
+    st.markdown("### Basic Information")
+    c1, c2 = st.columns(2)
+    employee_name = c1.text_input("Employee Name")
+    supervisor_name = c2.text_input("Supervisor Name")
+
+    c3, c4, c5 = st.columns(3)
+    injury_date = c3.date_input("Date of Injury")
+    injury_time = c4.time_input("Time of Injury")
+    location = c5.text_input("Job Site / Location")
+
+    incident_description = st.text_area("Describe what happened")
+
+    st.divider()
+
+    # ============================================================
+    # STEP 1 – RED FLAGS
+    # ============================================================
+    st.markdown("### STEP 1 – RED FLAGS")
+    st.write(
+        "If **ANY** red flag is present, stop and send the employee to the clinic immediately."
+    )
+
+    red_flags = st.multiselect(
+        "Check any that apply:",
+        [
+            "Loss of consciousness",
+            "Head injury",
+            "Eye injury",
+            "Severe bleeding / cut will not stop",
+            "Suspected fracture / cannot bear weight",
+            "Crush injury",
+            "Severe pain (7/10 or greater)",
+            "Chest pain / breathing issue",
+            "Electrical contact",
+            "Burn (more than minor)",
+            "NONE OF THE ABOVE",
+        ],
+        key="red_flags",
+    )
+
+    has_red_flag = any(flag != "NONE OF THE ABOVE" for flag in red_flags)
+
+    if has_red_flag:
+        st.error("Red flag present: **Send employee to clinic immediately and notify Chad.**")
+        red_flag_action = st.radio(
+            "Confirm action:",
+            ["Employee sent to clinic", "Employee will be sent immediately"],
+            key="red_flag_action",
+        )
+    else:
+        red_flag_action = None
+
+    st.divider()
+
+    # ============================================================
+    # STEP 2 – WORK ABILITY
+    # Only continue if no red flags
+    # ============================================================
+    work_ability = None
+    work_ability_action = None
+    if not has_red_flag:
+        st.markdown("### STEP 2 – WORK ABILITY")
+        work_ability = st.radio(
+            "Can the employee safely perform their normal job duties right now?",
+            [
+                "Yes – employee can safely perform normal duties",
+                "No – employee cannot safely perform normal duties",
+            ],
+            key="work_ability",
+        )
+
+        if work_ability.startswith("No"):
+            st.error("Employee cannot safely perform normal duties: **Clinic referral is required.**")
+            work_ability_action = st.radio(
+                "Confirm action:",
+                ["Employee sent to clinic", "Employee will be sent immediately"],
+                key="work_ability_action",
+            )
+
+    st.divider()
+
+    # ============================================================
+    # STEP 3 – SYMPTOMS
+    # Only continue if no red flags and work ability = yes
+    # ============================================================
+    symptoms = []
+    symptoms_action = None
+    can_continue_to_symptoms = (
+        not has_red_flag and work_ability and work_ability.startswith("Yes")
+    )
+
+    if can_continue_to_symptoms:
+        st.markdown("### STEP 3 – SYMPTOMS")
+        st.write("If **any** symptoms are present, clinic referral is required.")
+
+        symptoms = st.multiselect(
+            "Check any that apply:",
+            [
+                "Swelling",
+                "Limited movement",
+                "Increasing pain",
+                "NONE OF THE ABOVE",
+            ],
+            key="symptoms",
+        )
+
+        has_symptoms = any(item != "NONE OF THE ABOVE" for item in symptoms)
+
+        if has_symptoms:
+            st.warning("Symptoms present: **Employee should be referred to the clinic.**")
+            symptoms_action = st.radio(
+                "Confirm action:",
+                ["Employee sent to clinic", "Employee will be sent immediately"],
+                key="symptoms_action",
+            )
+    else:
+        has_symptoms = False
+
+    st.divider()
+
+    # ============================================================
+    # STEP 4 – MECHANISM OF INJURY
+    # Only continue if no red flags, work ability yes, no symptoms
+    # ============================================================
+    mechanism = []
+    mechanism_action = None
+    can_continue_to_mechanism = (
+        not has_red_flag
+        and work_ability
+        and work_ability.startswith("Yes")
+        and not has_symptoms
+    )
+
+    if can_continue_to_mechanism:
+        st.markdown("### STEP 4 – MECHANISM OF INJURY")
+        st.write("If any high-risk mechanism is present, clinic referral is recommended.")
+
+        mechanism = st.multiselect(
+            "Check any that apply:",
+            [
+                "Heavy lifting",
+                "Awkward twist or strain",
+                "Fall (same level or elevated)",
+                "Struck by object or equipment",
+                "NONE OF THE ABOVE",
+            ],
+            key="mechanism",
+        )
+
+        has_mechanism_trigger = any(item != "NONE OF THE ABOVE" for item in mechanism)
+
+        if has_mechanism_trigger:
+            st.warning(
+                "High-risk mechanism identified: **Employee should be referred to the clinic.**"
+            )
+            mechanism_action = st.radio(
+                "Confirm action:",
+                ["Employee sent to clinic", "Employee will be sent immediately"],
+                key="mechanism_action",
+            )
+    else:
+        has_mechanism_trigger = False
+
+    st.divider()
+
+    # ============================================================
+    # STEP 5 – FIRST AID
+    # Only continue if all prior gates are clear
+    # ============================================================
+    first_aid_measures = []
+    basic_first_aid_only = None
+    follow_up = None
+
+    can_continue_to_first_aid = (
+        not has_red_flag
+        and work_ability
+        and work_ability.startswith("Yes")
+        and not has_symptoms
+        and not has_mechanism_trigger
+    )
+
+    if can_continue_to_first_aid:
+        st.markdown("### STEP 5 – FIRST AID")
+        st.success("No red flags, symptoms, or high-risk mechanism identified.")
+
+        first_aid_measures = st.multiselect(
+            "Select all first aid measures and supplies provided:",
+            [
+                "Rest",
+                "Ice",
+                "Heat",
+                "Stretch",
+                "Bandage / dressing",
+                "Antiseptic / wound cleaning",
+                "Ice pack (instant or reusable)",
+                "Compression wrap",
+                "Elevation",
+                "None provided",
+            ],
+            key="first_aid_measures",
+        )
+
+        basic_first_aid_only = st.radio(
+            "Was only basic first aid provided (no medical treatment beyond first aid)?",
+            ["Yes", "No"],
+            key="basic_first_aid_only",
+        )
+
+        follow_up = st.radio(
+            "Has a next-day follow-up been scheduled?",
+            ["Yes – follow-up scheduled", "No – follow-up not scheduled"],
+            key="follow_up",
+        )
+
+        if follow_up.startswith("No"):
+            st.warning("Follow-up is required for all first aid cases.")
+            st.radio(
+                "Confirm action:",
+                ["Follow-up will be scheduled immediately"],
+                key="follow_up_action",
+            )
+
+    st.divider()
+
+    # ============================================================
+    # FINAL DETERMINATION
+    # ============================================================
+    st.markdown("### FINAL DETERMINATION")
+
+    if has_red_flag:
+        recommended_outcome = "Referred to Clinic"
+        trigger_reason = "Red Flag"
+    elif work_ability and work_ability.startswith("No"):
+        recommended_outcome = "Referred to Clinic"
+        trigger_reason = "Unable to Perform Normal Duties"
+    elif has_symptoms:
+        recommended_outcome = "Referred to Clinic"
+        trigger_reason = "Symptoms Present"
+    elif has_mechanism_trigger:
+        recommended_outcome = "Referred to Clinic"
+        trigger_reason = "High-Risk Mechanism"
+    elif can_continue_to_first_aid:
+        recommended_outcome = "First Aid Only"
+        trigger_reason = "No Escalation Trigger Met"
+    else:
+        recommended_outcome = "Incomplete"
+        trigger_reason = "Decision Tree Not Completed"
+
+    st.info(f"Recommended Outcome: **{recommended_outcome}**")
+    st.write(f"Trigger Reason: **{trigger_reason}**")
+
+    final_outcome = st.radio(
+        "Select the final outcome:",
+        ["Referred to Clinic", "First Aid Only"],
+        index=0 if recommended_outcome == "Referred to Clinic" else 1,
+        key="final_outcome",
+    )
+
+    notified = st.checkbox(
+        "I confirm that I followed the injury triage process and have notified Chad.",
+        key="notified_chad",
+    )
+
+    st.divider()
+
+    # ============================================================
+    # SUMMARY
+    # ============================================================
+    st.markdown("### Triage Summary")
+
+    summary_data = {
+        "Employee Name": employee_name,
+        "Supervisor Name": supervisor_name,
+        "Job Site / Location": location,
+        "Incident Description": incident_description,
+        "Red Flags": ", ".join(red_flags) if red_flags else "",
+        "Work Ability": work_ability if work_ability else "",
+        "Symptoms": ", ".join(symptoms) if symptoms else "",
+        "Mechanism": ", ".join(mechanism) if mechanism else "",
+        "First Aid Measures": ", ".join(first_aid_measures) if first_aid_measures else "",
+        "Basic First Aid Only": basic_first_aid_only if basic_first_aid_only else "",
+        "Recommended Outcome": recommended_outcome,
+        "Final Outcome": final_outcome,
+        "Notified Chad": "Yes" if notified else "No",
+    }
+
+    summary_df = pd.DataFrame(summary_data.items(), columns=["Field", "Value"])
+    st.dataframe(summary_df, use_container_width=True)
+
+    csv = summary_df.to_csv(index=False).encode("utf-8")
+    st.download_button(
+        "Download Triage Summary CSV",
+        data=csv,
+        file_name="injury_triage_summary.csv",
+        mime="text/csv",
+    )
+
+    if fpdf_available:
+        pdf_bytes = generate_pdf_from_summary(summary_data)
+        st.download_button(
+            "Download Triage Summary PDF",
+            data=pdf_bytes,
+            file_name="injury_triage_summary.pdf",
+            mime="application/pdf",
+        )
+    else:
+        st.info(
+            "PDF export is unavailable because the fpdf package is missing. "
+            "Install it with: `pip install fpdf` and rerun the app."
+        )
+
+
 crew_risk_df = build_crew_risk_table()
 
 # ============================================================
@@ -495,6 +848,7 @@ page = st.sidebar.radio(
         "Claims Analytics",
         "Fleet Risk",
         "Utility Strike Tracker",
+        "Injury Triage Tool",
         "Data Health",
         "Upload Data",
     ],
@@ -724,6 +1078,13 @@ elif page == "Claims Analytics":
 # ============================================================
 # PAGE: FLEET RISK
 # ============================================================
+# ============================================================
+# PAGE: INJURY TRIAGE TOOL
+elif page == "Injury Triage Tool":
+    render_injury_triage_tool()
+
+# ============================================================
+# PAGE: FLEET RISK
 elif page == "Fleet Risk":
     st.subheader("Fleet Risk")
 
