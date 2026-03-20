@@ -1,0 +1,93 @@
+ClaimNumber,ClaimType,IncidentDate,ReportDate,Crew,Supervisor,EmployeeName,BodyPart,Cause,Paid,Reserved,TotalIncurred,WC Claim Type,Status
+1183015,Workers Compensation,2/16/2010,2/16/2010,laborer,,"Nevarez, Alfonso",Lower back area,Strain or injury by,"$2,968.09 ",$0.00 ,"$2,968.09 ",Medical,Closed
+1189366,Workers Compensation,5/3/2010,5/3/2010,asst mechanic,,"Meza-Aguilera, Maximo",Upper arm,Motor vehicle,$0.00 ,$0.00 ,$0.00 ,Medical,Closed
+1195842,Workers Compensation,7/12/2010,7/13/2010,laborer,,"Perez, Santiago",Wrist,"Fall, slip, or trip injury",$968.33 ,$0.00 ,$968.33 ,Medical,Closed
+1199813,Workers Compensation,8/13/2010,8/13/2010,General laborer,,"Ruthem, Michael",Foot,Strain or injury by,$195.96 ,$0.00 ,$195.96 ,Medical,Closed
+1201360,Workers Compensation,8/31/2010,9/1/2010,laborer,,"Parra, Samuel",Knee,Strain or injury by,$256.10 ,$0.00 ,$256.10 ,Medical,Closed
+1206460,Workers Compensation,10/26/2010,10/26/2010,General Laborer,,"Gonzales, Luis",Lower back area,"Fall, slip, or trip injury","$4,212.22 ",$0.00 ,"$4,212.22 ",Not Applicable,Closed
+1206486,Workers Compensation,10/27/2010,10/27/2010,Operator/Locator,,"Whitehead, David M",Knee,Strain or injury by,$936.93 ,$0.00 ,$936.93 ,Medical,Closed
+1214461,Workers Compensation,1/27/2011,1/27/2011,laborer,,"Otero, Salvador C",Hand,"Caught in, under, or between",$322.60 ,$0.00 ,$322.60 ,Medical,Closed
+1225833,Workers Compensation,5/25/2011,5/25/2011,laborer,,"Penrod, Tylor J",Knee,Strain or injury by,$255.47 ,$0.00 ,$255.47 ,Medical,Closed
+1228827,Workers Compensation,6/20/2011,6/22/2011,unk,,"Avenlino, Javier",Lower arm,Strain or injury by,"$4,181.80 ",$0.00 ,"$4,181.80 ",Medical,Closed
+1231581,General Liability,7/6/2011,7/14/2011,N/A,,Marana School District,Not Applicable,Ongoing Operations,"$10,922.61 ",$0.00 ,"$10,922.61 ",Not Applicable,Closed
+1232626,Workers Compensation,7/20/2011,7/20/2011,drill operator,,"Esparza Perez, Jaime",Mouth,Struck or injured by,$716.75 ,$0.00 ,$716.75 ,Lost Time,Closed
+1235436,General Liability,7/29/2011,8/12/2011,N/A,,City of Phoenix,Not Applicable,Ongoing Operations,$0.00 ,$0.00 ,$0.00 ,Not Applicable,Closed
+1237143,Workers Compensation,8/19/2011,8/19/2011,foreman,,"Orozco, Daniel",Shoulder(s),Strain or injury by,"$3,691.34 ",$0.00 ,"$3,691.34 ",Medical,Closed
+1237146,Workers Compensation,8/23/2011,8/23/2011,mechanic,,"Chamberland, Jeffrey M",Soft tissue (head),Burn or scald - heat or cold exposures - contact with,$116.62 ,$0.00 ,$116.62 ,Medical,Closed
+1237174,General Liability,8/23/2011,8/24/2011,N/A,,Arizona Public Service,Not Applicable,Ongoing Operations,$0.00 ,$0.00 ,$0.00 ,Not Applicable,Closed
+1243517,General Liability,10/6/2011,10/14/2011,N/A,,Salt River Power,Not Applicable,Ongoing Operations,$886.86 ,$0.00 ,$886.86 ,Not Applicable,Closed
+1243527,General Liability,10/6/2011,10/14/2011,N/A,,Qwest,Not Applicable,Ongoing Operations,$0.00 ,$0.00 ,$0.00 ,Not Applicable,Closed
+1243527,General Liability,10/6/2011,10/14/2011,N/A,,Salt River Power,Not Applicable,Ongoing Operations,$730.42 ,$0.00 ,$730.42 ,Not Applicable,Closed
+1244220,Workers Compensation,10/17/2011,10/17/2011,General Laborer,,"Leyva, Armando",Lower leg,"Caught in, under, or between",$574.85 ,$0.00 ,$574.85 ,Medical,Closed
+1244518,Workers Compensation,10/19/2011,10/20/2011,Mechanic,,"Spiker, Aaron",Multiple neck injuries,Strain or injury by,$234.23 ,$0.00 ,$234.23 ,Medical,Closed
+1246334,General Liability,8/17/2011,11/7/2011,N/A,,Qwest Corp,Not Applicable,Ongoing Operations,$0.00 ,$0.00 ,$0.00 ,Not Applicable,Closed
+1248413,Workers Compensation,11/16/2011,11/21/2011,General Laborer,,"Erdman, Steven",Lower back area,Strain or injury by,"$1,662.37 ",$0.00 ,"$1,662.37 ",Medical,Closed
+1252719,General Liability,12/30/2011,1/4/2012,N/A,,City of Scottsdale/ Scottsdale Water,Not Applicable,Ongoing Operations,$0.00 ,$0.00 ,$0.00 ,Not Applicable,Closed
+1257750,General Liability,2/6/2012,2/13/2012,N/A,,Salt River Project,Not Applicable,Ongoing Operations,$0.00 ,$0.00 ,$0.00 ,Not Applicable,Closed
+1258562,Workers Compensation,2/20/2012,2/20/2012,Mechanic,,"Chamberland, Jeffrey M",Eye(s),Miscellaneous causes,$456.98 ,$0.00 ,$456.98 ,Medical,Closed
+1262327,Workers Compensation,1/10/2012,3/20/2012,Unk,,"Sanchez, Jose A",Unclassified - insufficient info to properly identify,Miscellaneous causes,$0.00 ,$0.00 ,$0.00 ,Lost Time,Closed
+1264228,Workers Compensation,4/4/2012,4/4/2012,General Laborer,,"Vasquez, Andrew J",Finger(s),Struck or injured by,$439.96 ,$0.00 ,$439.96 ,Medical,Closed
+1269243,Commercial Auto,5/9/2012,5/11/2012,N/A,,"Romero, Laura",Not Applicable,Collision,"$1,899.00 ",$0.00 ,"$1,899.00 ",Not Applicable,Closed
+1269944,General Liability,5/11/2012,N/A,Not Available,,"Reyes, Matthew",Not Applicable,Ongoing Operations,$0.00 ,$0.00 ,$0.00 ,Not Applicable,Closed
+1273661,Workers Compensation,6/5/2012,6/5/2012,Bore operator,,"Uptegrove, Samuel F",Hand,"Caught in, under, or between",$557.28 ,$0.00 ,$557.28 ,Medical,Closed
+1274458,General Liability,5/3/2012,6/14/2012,N/A,,Cox Communication,Not Applicable,Ongoing Operations,"$4,200.00 ",$0.00 ,"$4,200.00 ",Not Applicable,Closed
+1279739,Workers Compensation,7/20/2012,7/20/2012,Foreman,,"Whitehead, David M",Multiple body parts,Miscellaneous causes,"$1,904.98 ",$0.00 ,"$1,904.98 ",Medical,Closed
+2333343,N/A,1/5/2023,N/A,N/A,,N/A,N/A,Collision,,,$0.00 ,Not Applicable,Closed
+2605308,Commercial Auto,3/9/2023,N/A,Not Available,,"Roether, Ivan",N/A,Collision,"$7,476.58 ",$0.00 ,"$7,476.58 ",Not Applicable,Closed
+2607614,General Liability,3/31/2023,N/A,Not Available,,Century Link,N/A,Ongoing Operations,$0.00 ,$0.00 ,$0.00 ,Not Applicable,Closed
+2608844,Commercial Auto,4/12/2023,N/A,Not Available,,Paramount Designs Inc,N/A,Collision,$0.00 ,$0.00 ,$0.00 ,Not Applicable,Closed
+2608844,Commercial Auto,4/12/2023,N/A,Not Available,,"Arnold, Paul",N/A,Collision,"$2,506.18 ",$0.00 ,"$2,506.18 ",Not Applicable,Closed
+2610323,Commercial Auto,4/28/2023,N/A,Not Available,,"Bennett, Rebecca",N/A,Collision,"$18,983.18 ",$0.00 ,"$18,983.18 ",Not Applicable,Closed
+2614730,Workers Compensation,2/21/2023,2/21/2023,Not Available,,"Acasta Martinez, Aaron",Finger(s),"Cut, puncture, scrape, injured by",,,$0.00 ,Notice Only,Closed
+2629269,General Liability,5/10/2023,N/A,Not Available,,Cox Communications,N/A,Premises,,,$0.00 ,Not Applicable,Closed
+2629338,General Liability,8/21/2023,N/A,Not Available,,Cox Communications,N/A,Ongoing Operations,"$6,466.37 ",$0.00 ,"$6,466.37 ",Not Applicable,Closed
+2634952,General Liability,10/25/2023,N/A,Not Available,,Cox Communications,N/A,Ongoing Operations,"$15,000.00 ",$0.00 ,"$15,000.00 ",Not Applicable,Closed
+2640029,Commercial Auto,2/8/2024,N/A,Not Available,,"Mendoza, Angel",N/A,Collision,$475.12 ,$0.00 ,$475.12 ,Not Applicable,Closed
+2644595,Workers Compensation,4/9/2024,4/9/2024,Foreman,,"Perez, Jose",Elbow,"Fall, slip, or trip injury",$464.23 ,$0.00 ,$464.23 ,Medical,Closed
+2645815,General Liability,4/8/2024,N/A,Not Available,,"Yoder, Donn",N/A,Ongoing Operations,"$9,612.10 ",$0.00 ,"$9,612.10 ",Not Applicable,Closed
+2647604,Commercial Auto,5/13/2024,N/A,Not Available,,"Mendez, Adrian",N/A,Collision,$0.00 ,$0.00 ,$0.00 ,Not Applicable,Closed
+2659266,Commercial Auto,9/5/2024,N/A,Not Available,,"Dewit, Timothy Owen",N/A,Collision,"$5,232.27 ",$0.00 ,"$5,232.27 ",Not Applicable,Closed
+2662292,General Liability,7/25/2024,N/A,Not Available,,Cox Communication,N/A,Ongoing Operations,$0.00 ,$0.00 ,$0.00 ,Not Applicable,Closed
+2662584,Workers Compensation,9/18/2024,9/18/2024,General Foreman,,"Hernandez, Pedro",Finger(s),Strain or injury by,"$35,185.30 ",$0.00 ,"$35,185.30 ",Lost Time,Closed
+2663800,General Liability,7/31/2024,N/A,Not Available,,Cox Communications,N/A,Ongoing Operations,"$21,750.00 ",$0.00 ,"$21,750.00 ",Not Applicable,Closed
+2663804,Commercial Auto,10/18/2024,N/A,Not Available,,"Paramount Designs, Inc",N/A,Collision,$240.40 ,$0.00 ,$240.40 ,Not Applicable,Closed
+2665027,Commercial Auto,11/8/2024,N/A,Not Available,,"Retterer, Ryan",N/A,Collision,"$4,709.26 ",$0.00 ,"$4,709.26 ",Not Applicable,Closed
+2665173,N/A,7/31/2024,N/A,N/A,,N/A,N/A,Ongoing Operations,,,$0.00 ,Not Applicable,Closed
+2665191,Commercial Auto,11/12/2024,N/A,Not Available,,"Paramount Designs, Inc",N/A,Collision,"$5,344.12 ",$0.00 ,"$5,344.12 ",Not Applicable,Closed
+2665916,General Liability,3/23/2024,N/A,Not Available,,Arizona Public Service Company,N/A,Ongoing Operations,"$13,291.97 ",$0.00 ,"$13,291.97 ",Not Applicable,Closed
+2666412,Commercial Auto,11/22/2024,N/A,Not Available,,"Paramount Designs, Inc",N/A,Collision,$0.00 ,$0.00 ,$0.00 ,Not Applicable,Closed
+2666412,Commercial Auto,11/22/2024,N/A,Not Available,,"Stewart, Dillon",N/A,Collision,"$5,988.09 ",$0.00 ,"$5,988.09 ",Not Applicable,Closed
+2669543,Commercial Auto,1/11/2025,N/A,Not Available,,"Peaslee, Stuart",N/A,Collision,"$49,641.04 ",$0.00 ,"$49,641.04 ",Not Applicable,Closed
+2673903,N/A,3/4/2025,N/A,N/A,,N/A,N/A,Collision,,,$0.00 ,Not Applicable,Closed
+2674653,General Liability,1/14/2025,N/A,Not Available,,Cox,N/A,Completed Operations,$0.00 ,"$11,292.00 ","$11,292.00 ",Not Applicable,Open
+2674719,Workers Compensation,3/11/2025,3/11/2025,General Laborer,,"Santana, Juan",Lower back area,Strain or injury by,"$1,454.91 ",$0.00 ,"$1,454.91 ",Medical,Closed
+2676924,Commercial Auto,4/15/2025,N/A,Not Available,,"Paramount Designs, Inc",N/A,Collision,$0.00 ,$0.00 ,$0.00 ,Not Applicable,Closed
+2676924,Commercial Auto,4/15/2025,N/A,Not Available,,"Sawyer, Brian",N/A,Collision,"$3,683.72 ",$0.00 ,"$3,683.72 ",Not Applicable,Closed
+2679468,General Liability,7/1/2024,N/A,Not Available,,Lumen Technologies,N/A,Ongoing Operations,$0.00 ,$0.00 ,$0.00 ,Not Applicable,Closed
+2679602,General Liability,2/18/2025,N/A,Not Available,,Cox Communications,N/A,Ongoing Operations,$0.00 ,"$8,500.00 ","$8,500.00 ",Not Applicable,Open
+2680055,Commercial Auto,5/20/2025,N/A,Not Available,,"Paramount Designs, Inc",N/A,Collision,$284.97 ,$0.00 ,$284.97 ,Not Applicable,Closed
+2682462,N/A,8/12/2024,N/A,N/A,,N/A,N/A,Ongoing Operations,,,$0.00 ,Not Applicable,Closed
+2689014,Commercial Auto,9/4/2025,N/A,Not Available,,"Paramount Designs, Inc",N/A,Collision,$0.00 ,$0.00 ,$0.00 ,Not Applicable,Open
+2689014,Commercial Auto,9/4/2025,N/A,Not Available,,"Williams, Jennifer",N/A,Collision,$0.00 ,"$3,500.00 ","$3,500.00 ",Not Applicable,Open
+2691044,Commercial Auto,9/26/2025,N/A,Not Available,,"Paramount Designs, Inc",N/A,Collision,"$25,070.62 ",$0.00 ,"$25,070.62 ",Not Applicable,Open
+2691044,Commercial Auto,9/26/2025,N/A,Not Available,,"Quiroz, Noe",N/A,Collision,,,$0.00 ,Not Applicable,Open
+2691044,Commercial Auto,9/26/2025,N/A,Not Available,,"Washington, Mario Jakar",N/A,Collision,$0.00 ,"$2,500.00 ","$2,500.00 ",Not Applicable,Open
+2691359,Workers Compensation,9/26/2025,9/26/2025,General Laborer,,"Quiroz, Noe",Soft tissue (head),Motor vehicle,"$5,609.85 ","$4,066.25 ","$9,676.10 ",Medical,Open
+2692605,Workers Compensation,4/9/2025,4/9/2025,Not Available,,"Torres, Omar",Unclassified - insufficient info to properly identify,Miscellaneous causes,$429.19 ,$0.00 ,$429.19 ,Medical,Closed
+2692796,Commercial Auto,9/26/2025,N/A,Not Available,,"Paramount Designs, Inc",N/A,Collision,$0.00 ,"$7,000.00 ","$7,000.00 ",Not Applicable,Open
+2692796,Commercial Auto,9/26/2025,N/A,Laborer,,"Quiroz, Noe W",N/A,Collision,$0.00 ,"$75,000.00 ","$75,000.00 ",Not Applicable,Open
+2692808,N/A,4/10/2025,10/23/2025,Not Available,,"Daniel, Rene",Unclassified - insufficient info to properly identify,Miscellaneous causes,,,$0.00 ,Medical,Closed
+2694118,N/A,4/14/2025,11/7/2025,Not Available,,"Gutierrez, Daniel",Multiple body parts,Miscellaneous causes,,,$0.00 ,Medical,Closed
+2695769,General Liability,2/21/2025,N/A,Not Available,,Lumen Technologies,N/A,Ongoing Operations,$0.00 ,"$8,000.00 ","$8,000.00 ",Not Applicable,Open
+2696827,N/A,4/9/2025,12/3/2025,Not Available,,"Torres, Omar",Multiple body parts,"Caught in, under, or between",,,$0.00 ,Medical,Closed
+2697555,N/A,12/22/2025,N/A,N/A,,N/A,N/A,Collision,,,$0.00 ,Not Applicable,Open
+2699414,N/A,5/23/2025,1/21/2026,Not Available,,"Flores, Richard Hernandez",Multiple body parts,Miscellaneous causes,,,$0.00 ,Medical,Closed
+2700215,Workers Compensation,4/14/2025,12/19/2025,CDL driver general labor,,"Gutierrez, Daniel",Knee,"Fall, slip, or trip injury",,,$0.00 ,Medical,Closed
+2700940,N/A,2/4/2026,N/A,N/A,,N/A,N/A,Collision,,,$0.00 ,Not Applicable,Open
+2702117,N/A,2/3/2026,N/A,N/A,,N/A,N/A,Collision,,,$0.00 ,Not Applicable,Open
+2702980,N/A,7/24/2025,3/4/2026,Not Available,,"Espinosa, Carlo",Unclassified - insufficient info to properly identify,Miscellaneous causes,,,$0.00 ,Medical,Closed
+2703235,N/A,2/3/2026,N/A,N/A,,N/A,N/A,Collision,,,$0.00 ,Not Applicable,Open
+2703243,Commercial Auto,1/9/2026,N/A,Not Available,,"Seymour, James",N/A,Collision,$0.00 ,"$5,000.00 ","$5,000.00 ",Not Applicable,Open
+2703243,Commercial Auto,1/9/2026,N/A,Not Available,,"Paramount Designs, Inc",N/A,Collision,$0.00 ,"$5,000.00 ","$5,000.00 ",Not Applicable,Open
+2703597,N/A,1/14/2026,N/A,N/A,,N/A,N/A,Collision,,,$0.00 ,Not Applicable,Open
+2703600,N/A,2/17/2026,N/A,N/A,,N/A,N/A,Collision,,,$0.00 ,Not Applicable,Open

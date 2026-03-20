@@ -6,8 +6,7 @@ showErrorDetails = true
 
 [server]
 maxUploadSize = 200
-port = 8503
-headless = true
+# Remove port and headless settings for Streamlit Cloud compatibility
 
 [theme]
 base = "light"
