@@ -140,14 +140,41 @@ def generate_pdf_from_summary(summary_data: dict) -> bytes:
 
     pdf.set_font("Arial", size=11)
     for field, value in summary_data.items():
+        # Clean the value to remove/replace problematic Unicode characters
         clean_value = str(value).replace("\n", " ")
+        # Replace common Unicode characters that cause issues
+        clean_value = clean_value.replace("–", "-").replace("—", "-").replace("'", "'").replace('"', '"')
+        # Remove any remaining non-ASCII characters
+        clean_value = ''.join(c for c in clean_value if ord(c) < 128)
         line = f"{field}: {clean_value}"
         pdf.multi_cell(0, 7, line)
 
-    out = pdf.output(dest="S")
-    if isinstance(out, str):
-        out = out.encode("latin-1")
-    return out
+    try:
+        out = pdf.output(dest="S")
+        if isinstance(out, str):
+            out = out.encode("latin-1")
+        return out
+    except UnicodeEncodeError:
+        # Fallback: create a simpler PDF without problematic characters
+        pdf = FPDF()
+        pdf.set_auto_page_break(auto=True, margin=10)
+        pdf.add_page()
+        pdf.set_font("Arial", "B", 14)
+        pdf.cell(0, 10, "Injury Triage Summary", ln=True, align="C")
+        pdf.ln(4)
+
+        pdf.set_font("Arial", size=11)
+        for field, value in summary_data.items():
+            # More aggressive cleaning for fallback
+            clean_value = str(value).replace("\n", " ")
+            clean_value = ''.join(c for c in clean_value if ord(c) < 128 and c.isprintable())
+            line = f"{field}: {clean_value}"
+            pdf.multi_cell(0, 7, line)
+
+        out = pdf.output(dest="S")
+        if isinstance(out, str):
+            out = out.encode("latin-1")
+        return out
 
 
 # ============================================================
