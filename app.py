@@ -605,7 +605,6 @@ def render_injury_triage_tool():
 
     # ============================================================
     # STEP 2 – WORK ABILITY
-    # Only continue if no red flags
     # ============================================================
     work_ability = None
     work_ability_action = None
@@ -632,7 +631,6 @@ def render_injury_triage_tool():
 
     # ============================================================
     # STEP 3 – SYMPTOMS
-    # Only continue if no red flags and work ability = yes
     # ============================================================
     symptoms = []
     symptoms_action = None
@@ -671,10 +669,10 @@ def render_injury_triage_tool():
 
     # ============================================================
     # STEP 4 – MECHANISM OF INJURY
-    # Only continue if no red flags, work ability yes, no symptoms
     # ============================================================
     mechanism = []
     mechanism_action = None
+    mechanism_pain_followup = None
     can_continue_to_mechanism = (
         not has_red_flag
         and work_ability
@@ -684,7 +682,10 @@ def render_injury_triage_tool():
 
     if can_continue_to_mechanism:
         st.markdown("### STEP 4 – MECHANISM OF INJURY")
-        st.write("If any high-risk mechanism is present, clinic referral is recommended.")
+        st.write(
+            "These mechanisms increase the risk of delayed injury. "
+            "Mechanism alone does not require clinic referral, but worsening pain or limited movement may."
+        )
 
         mechanism = st.multiselect(
             "Check any that apply:",
@@ -698,41 +699,59 @@ def render_injury_triage_tool():
             key="mechanism",
         )
 
-        has_mechanism_trigger = any(item != "NONE OF THE ABOVE" for item in mechanism)
+        has_mechanism_flag = any(item != "NONE OF THE ABOVE" for item in mechanism)
 
-        if has_mechanism_trigger:
-            st.warning(
-                "High-risk mechanism identified: **Employee should be referred to the clinic.**"
+        if has_mechanism_flag:
+            st.info(
+                "A higher-risk mechanism is present. Evaluate the employee's current condition before deciding."
             )
-            mechanism_action = st.radio(
-                "Confirm action:",
-                ["Employee sent to clinic", "Employee will be sent immediately"],
-                key="mechanism_action",
+
+            mechanism_pain_followup = st.radio(
+                "Is the employee experiencing pain that is worsening or limiting movement?",
+                ["No", "Yes"],
+                key="mechanism_pain_followup",
             )
+
+            if mechanism_pain_followup == "Yes":
+                st.warning("Worsening pain or limited movement present: **Clinic referral is required.**")
+                mechanism_action = st.radio(
+                    "Confirm action:",
+                    ["Employee sent to clinic", "Employee will be sent immediately"],
+                    key="mechanism_action",
+                )
+            else:
+                mechanism_action = st.radio(
+                    "Based on the mechanism and current condition, what is the appropriate action?",
+                    ["Continue with first aid and monitor", "Refer to clinic"],
+                    key="mechanism_action_non_trigger",
+                )
     else:
-        has_mechanism_trigger = False
+        has_mechanism_flag = False
 
     st.divider()
 
     # ============================================================
     # STEP 5 – FIRST AID
-    # Only continue if all prior gates are clear
     # ============================================================
     first_aid_measures = []
     basic_first_aid_only = None
     follow_up = None
+    next_day_return = None
 
     can_continue_to_first_aid = (
         not has_red_flag
         and work_ability
         and work_ability.startswith("Yes")
         and not has_symptoms
-        and not has_mechanism_trigger
+        and (
+            not has_mechanism_flag
+            or (mechanism_pain_followup == "No" and mechanism_action == "Continue with first aid and monitor")
+        )
     )
 
     if can_continue_to_first_aid:
         st.markdown("### STEP 5 – FIRST AID")
-        st.success("No red flags, symptoms, or high-risk mechanism identified.")
+        st.success("No red flags or symptom triggers requiring clinic referral were identified.")
 
         first_aid_measures = st.multiselect(
             "Select all first aid measures and supplies provided:",
@@ -771,12 +790,38 @@ def render_injury_triage_tool():
                 key="follow_up_action",
             )
 
+        next_day_return = st.radio(
+            "If the employee cannot report to work the next day due to this injury, clinic evaluation is required. "
+            "Based on current condition, do you expect the employee will be able to report to work the next day?",
+            ["Yes", "No / Unsure"],
+            key="next_day_return",
+        )
+
+        if next_day_return == "No / Unsure":
+            st.warning("If the employee may not be able to report to work the next day, **clinic evaluation is required.**")
+            st.radio(
+                "Confirm action:",
+                ["Employee sent to clinic", "Employee will be sent immediately"],
+                key="next_day_return_action",
+            )
+
     st.divider()
 
     # ============================================================
     # FINAL DETERMINATION
     # ============================================================
     st.markdown("### FINAL DETERMINATION")
+
+    referred_due_to_mechanism = (
+        has_mechanism_flag and (
+            (mechanism_pain_followup == "Yes")
+            or (mechanism_action == "Refer to clinic")
+        )
+    )
+
+    referred_due_to_next_day = (
+        can_continue_to_first_aid and next_day_return == "No / Unsure"
+    )
 
     if has_red_flag:
         recommended_outcome = "Referred to Clinic"
@@ -787,9 +832,12 @@ def render_injury_triage_tool():
     elif has_symptoms:
         recommended_outcome = "Referred to Clinic"
         trigger_reason = "Symptoms Present"
-    elif has_mechanism_trigger:
+    elif referred_due_to_mechanism:
         recommended_outcome = "Referred to Clinic"
-        trigger_reason = "High-Risk Mechanism"
+        trigger_reason = "Mechanism + Current Condition"
+    elif referred_due_to_next_day:
+        recommended_outcome = "Referred to Clinic"
+        trigger_reason = "May Not Be Able to Report to Work Next Day"
     elif can_continue_to_first_aid:
         recommended_outcome = "First Aid Only"
         trigger_reason = "No Escalation Trigger Met"
@@ -828,9 +876,14 @@ def render_injury_triage_tool():
         "Work Ability": work_ability if work_ability else "",
         "Symptoms": ", ".join(symptoms) if symptoms else "",
         "Mechanism": ", ".join(mechanism) if mechanism else "",
+        "Mechanism Pain / Limiting Movement": mechanism_pain_followup if mechanism_pain_followup else "",
+        "Mechanism Decision": mechanism_action if mechanism_action else "",
         "First Aid Measures": ", ".join(first_aid_measures) if first_aid_measures else "",
         "Basic First Aid Only": basic_first_aid_only if basic_first_aid_only else "",
+        "Next-Day Follow-Up": follow_up if follow_up else "",
+        "Expected Next-Day Return": next_day_return if next_day_return else "",
         "Recommended Outcome": recommended_outcome,
+        "Trigger Reason": trigger_reason,
         "Final Outcome": final_outcome,
         "Notified Chad": "Yes" if notified else "No",
     }
@@ -845,20 +898,6 @@ def render_injury_triage_tool():
         file_name="injury_triage_summary.csv",
         mime="text/csv",
     )
-
-    if fpdf_available:
-        pdf_bytes = generate_pdf_from_summary(summary_data)
-        st.download_button(
-            "Download Triage Summary PDF",
-            data=pdf_bytes,
-            file_name="injury_triage_summary.pdf",
-            mime="application/pdf",
-        )
-    else:
-        st.info(
-            "PDF export is unavailable because the fpdf package is missing. "
-            "Install it with: `pip install fpdf` and rerun the app."
-        )
 
 
 crew_risk_df = build_crew_risk_table()
