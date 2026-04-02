@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import plotly.express as px
+import plotly.io as pio
 from pathlib import Path
 
 
@@ -16,8 +17,128 @@ except ImportError:
 st.set_page_config(page_title="PDI Risk Dashboard", layout="wide")
 
 # ============================================================
-# PATHS
+# CUSTOM THEME – gradient gray background, maroon accents
 # ============================================================
+_MAROON = "#6B1D2A"
+_MAROON_LIGHT = "#8C2D3E"
+_MAROON_DARK = "#4A0E1B"
+_GRAY_BG = "#F5F5F5"
+
+st.markdown(
+    f"""
+    <style>
+    /* ── Gradient gray background ── */
+    .stApp {{
+        background: linear-gradient(180deg, #e8e8e8 0%, #f5f5f5 40%, #ffffff 100%);
+    }}
+    [data-testid="stSidebar"] {{
+        background: linear-gradient(180deg, {_MAROON_DARK} 0%, {_MAROON} 60%, {_MAROON_LIGHT} 100%);
+    }}
+    [data-testid="stSidebar"] * {{
+        color: #f0e6e8 !important;
+    }}
+    [data-testid="stSidebar"] .stRadio label:hover {{
+        color: #ffffff !important;
+    }}
+
+    /* ── Page title & headers ── */
+    h1 {{
+        color: {_MAROON} !important;
+    }}
+    h2, h3, .stSubheader {{
+        color: {_MAROON_LIGHT} !important;
+    }}
+
+    /* ── Metric cards ── */
+    [data-testid="stMetric"] {{
+        background: #ffffff;
+        border-left: 4px solid {_MAROON};
+        border-radius: 6px;
+        padding: 12px 16px;
+        box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+    }}
+    [data-testid="stMetric"] label {{
+        color: #555555 !important;
+    }}
+    [data-testid="stMetric"] [data-testid="stMetricValue"] {{
+        color: {_MAROON} !important;
+    }}
+
+    /* ── Dataframes ── */
+    .stDataFrame thead th {{
+        background-color: {_MAROON} !important;
+        color: #ffffff !important;
+    }}
+
+    /* ── Buttons ── */
+    .stButton > button {{
+        background-color: {_MAROON};
+        color: #ffffff;
+        border: none;
+        border-radius: 5px;
+    }}
+    .stButton > button:hover {{
+        background-color: {_MAROON_LIGHT};
+        color: #ffffff;
+    }}
+
+    /* ── Download buttons ── */
+    .stDownloadButton > button {{
+        background-color: {_MAROON};
+        color: #ffffff;
+        border: none;
+    }}
+    .stDownloadButton > button:hover {{
+        background-color: {_MAROON_LIGHT};
+        color: #ffffff;
+    }}
+
+    /* ── Tabs ── */
+    .stTabs [data-baseweb="tab"] {{
+        color: {_MAROON};
+    }}
+    .stTabs [aria-selected="true"] {{
+        border-bottom-color: {_MAROON} !important;
+        color: {_MAROON} !important;
+        font-weight: 600;
+    }}
+
+    /* ── Horizontal rules ── */
+    hr {{
+        border-color: {_MAROON_LIGHT} !important;
+        opacity: 0.3;
+    }}
+
+    /* ── Expanders ── */
+    .streamlit-expanderHeader {{
+        color: {_MAROON} !important;
+        font-weight: 600;
+    }}
+
+    /* ── Info / success / error boxes ── */
+    .stAlert {{
+        border-radius: 6px;
+    }}
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+
+# ── Plotly theme (maroon / gray palette) ──
+_PDI_COLORS = [
+    _MAROON, "#A63D50", "#C75B6E", "#D4848F", "#E0ADAF",
+    "#555555", "#777777", "#999999", "#BBBBBB", "#DDDDDD",
+]
+_pdi_template = pio.templates["plotly_white"]
+_pdi_template.layout.colorway = _PDI_COLORS
+_pdi_template.layout.font = dict(color="#333333")
+_pdi_template.layout.title = dict(font=dict(color=_MAROON))
+_pdi_template.layout.paper_bgcolor = "rgba(0,0,0,0)"
+_pdi_template.layout.plot_bgcolor = "#fafafa"
+_pdi_template.layout.xaxis = dict(gridcolor="#e0e0e0")
+_pdi_template.layout.yaxis = dict(gridcolor="#e0e0e0")
+pio.templates["pdi"] = _pdi_template
+pio.templates.default = "pdi"
 BASE_DIR = Path(__file__).parent
 DATA_DIR = BASE_DIR / "data"
 SAMPLE_DIR = BASE_DIR / "sample_data"
@@ -180,7 +301,11 @@ def generate_pdf_from_summary(summary_data: dict) -> bytes:
 # ============================================================
 # LOAD DATA
 # ============================================================
-loss_df = load_csv(FILES["loss_runs"])
+# Uploaded loss runs fully replace default/sample data for this session.
+if "loss_runs_uploaded_df" in st.session_state:
+    loss_df = st.session_state["loss_runs_uploaded_df"].copy()
+else:
+    loss_df = load_csv(FILES["loss_runs"])
 payroll_df = load_csv(FILES["payroll"])
 fleet_df = load_csv(FILES["fleet"])
 incident_df = load_csv(FILES["incidents"])
@@ -200,10 +325,27 @@ PAYROLL_COLS = [
 ]
 
 FLEET_COLS = [
-    "Date", "VehicleID", "Driver", "JobTitle", "Crew", "MilesDriven",
-    "EngineHours", "SpeedingEvents", "HarshBrakeEvents",
-    "HarshAccelEvents", "SeatbeltViolations",
-    "DistractedDrivingEvents", "VehicleAccidents", "IdleHours"
+    "Driver Name", "Driver ID", "Username", "Safety Score",
+    "Drive Time (hh:mm:ss)", "Total Distance (mi)", "Total Events",
+    "Total Behaviors", "Time Over Speed Limit (hh:mm:ss) - Light",
+    "Time Over Speed Limit (hh:mm:ss) - Moderate",
+    "Time Over Speed Limit (hh:mm:ss) - Heavy",
+    "Time Over Speed Limit (hh:mm:ss) - Severe",
+    "Time Over Max Speed (hh:mm:ss)", "Speeding (Manual)",
+    "Percent Light Speeding", "Percent Moderate Speeding",
+    "Percent Heavy Speeding", "Percent Severe Speeding",
+    "Percent Max Speed", "Light Speeding Events Count",
+    "Moderate Speeding Events Count", "Heavy Speeding Events Count",
+    "Severe Speeding Events Count", "Max Speed Events Count",
+    "Max Speed (mph)", "Max Speed At", "Crash", "Following Distance",
+    "Following of 0-2s (Manual)", "Following of 2-4s (Manual)",
+    "Late Response (Manual)", "Defensive Driving (Manual)",
+    "Near Collision (Manual)", "Harsh Accel", "Harsh Brake",
+    "Harsh Turn", "Mobile Usage", "Inattentive Driving", "Drowsy",
+    "Rolling Stop", "Did Not Yield (Manual)", "Ran Red Light (Manual)",
+    "Lane Departure (Manual)", "Obstructed Camera (Automatic)",
+    "Obstructed Camera (Manual)", "Eating/Drinking (Manual)",
+    "Smoking (Manual)", "No Seat Belt", "Forward Collision Warning"
 ]
 
 INCIDENT_COLS = [
@@ -240,15 +382,76 @@ if utility_df.empty:
 loss_df = to_datetime_safe(loss_df, ["IncidentDate", "ReportDate"])
 loss_df = to_numeric_safe(loss_df, ["Paid", "Reserved", "TotalIncurred"])
 payroll_df = to_numeric_safe(payroll_df, ["HoursWorked", "Employees", "Payroll"])
-fleet_df = to_datetime_safe(fleet_df, ["Date"])
+# Convert Samsara numeric columns
 fleet_df = to_numeric_safe(
     fleet_df,
     [
-        "MilesDriven", "EngineHours", "SpeedingEvents", "HarshBrakeEvents",
-        "HarshAccelEvents", "SeatbeltViolations",
-        "DistractedDrivingEvents", "VehicleAccidents", "IdleHours"
+        "Safety Score", "Total Distance (mi)", "Total Events", "Total Behaviors",
+        "Light Speeding Events Count", "Moderate Speeding Events Count",
+        "Heavy Speeding Events Count", "Severe Speeding Events Count",
+        "Max Speed Events Count", "Max Speed (mph)", "Crash",
+        "Following Distance", "Following of 0-2s (Manual)",
+        "Following of 2-4s (Manual)", "Late Response (Manual)",
+        "Defensive Driving (Manual)", "Near Collision (Manual)",
+        "Harsh Accel", "Harsh Brake", "Harsh Turn", "Mobile Usage",
+        "Inattentive Driving", "Drowsy", "Rolling Stop",
+        "Did Not Yield (Manual)", "Ran Red Light (Manual)",
+        "Lane Departure (Manual)", "Obstructed Camera (Automatic)",
+        "Obstructed Camera (Manual)", "Eating/Drinking (Manual)",
+        "Smoking (Manual)", "No Seat Belt", "Forward Collision Warning",
+        "Speeding (Manual)", "Percent Light Speeding",
+        "Percent Moderate Speeding", "Percent Heavy Speeding",
+        "Percent Severe Speeding", "Percent Max Speed",
     ],
 )
+
+# Derive compatibility columns so existing dashboard logic still works.
+# "Driver" mapped from "Driver Name"
+if "Driver Name" in fleet_df.columns:
+    fleet_df["Driver"] = fleet_df["Driver Name"]
+# "MilesDriven" mapped from "Total Distance (mi)"
+if "Total Distance (mi)" in fleet_df.columns:
+    fleet_df["MilesDriven"] = fleet_df["Total Distance (mi)"]
+# "SpeedingEvents" = sum of all speeding event count columns
+for _c in ["Light Speeding Events Count", "Moderate Speeding Events Count",
+           "Heavy Speeding Events Count", "Severe Speeding Events Count",
+           "Max Speed Events Count"]:
+    if _c not in fleet_df.columns:
+        fleet_df[_c] = 0
+fleet_df["SpeedingEvents"] = (
+    fleet_df["Light Speeding Events Count"]
+    + fleet_df["Moderate Speeding Events Count"]
+    + fleet_df["Heavy Speeding Events Count"]
+    + fleet_df["Severe Speeding Events Count"]
+    + fleet_df["Max Speed Events Count"]
+)
+# "HarshBrakeEvents" mapped from "Harsh Brake"
+if "Harsh Brake" in fleet_df.columns:
+    fleet_df["HarshBrakeEvents"] = fleet_df["Harsh Brake"]
+else:
+    fleet_df["HarshBrakeEvents"] = 0
+# "HarshAccelEvents" mapped from "Harsh Accel"
+if "Harsh Accel" in fleet_df.columns:
+    fleet_df["HarshAccelEvents"] = fleet_df["Harsh Accel"]
+else:
+    fleet_df["HarshAccelEvents"] = 0
+# "SeatbeltViolations" mapped from "No Seat Belt"
+if "No Seat Belt" in fleet_df.columns:
+    fleet_df["SeatbeltViolations"] = fleet_df["No Seat Belt"]
+else:
+    fleet_df["SeatbeltViolations"] = 0
+# "DistractedDrivingEvents" = Mobile Usage + Inattentive Driving
+fleet_df["DistractedDrivingEvents"] = (
+    fleet_df.get("Mobile Usage", 0) + fleet_df.get("Inattentive Driving", 0)
+)
+# "VehicleAccidents" mapped from "Crash"
+if "Crash" in fleet_df.columns:
+    fleet_df["VehicleAccidents"] = fleet_df["Crash"]
+else:
+    fleet_df["VehicleAccidents"] = 0
+# Ensure "Crew" column exists for groupby operations (not in Samsara report)
+if "Crew" not in fleet_df.columns:
+    fleet_df["Crew"] = "Unknown"
 incident_df = to_datetime_safe(incident_df, ["Date"])
 utility_df = to_datetime_safe(utility_df, ["Date"])
 utility_df = to_numeric_safe(utility_df, ["RepairCost"])
@@ -969,10 +1172,10 @@ elif page == "Crew Risk Ranking":
             color="RiskLevel",
             title="Total Risk Score by Crew",
             color_discrete_map={
-                "Low": "green",
-                "Moderate": "gold",
-                "High": "orange",
-                "Severe": "red",
+                "Low": "#BBBBBB",
+                "Moderate": "#D4848F",
+                "High": "#A63D50",
+                "Severe": "#4A0E1B",
             },
         )
         st.plotly_chart(fig, width='stretch')
@@ -1028,7 +1231,7 @@ elif page == "Claims Analytics":
                     y="TRIR",
                     title="TRIR (Total Recordable Incident Rate) by Crew",
                     color="TRIR",
-                    color_continuous_scale="Reds",
+                    color_continuous_scale=[[0, '#f0e6e8'], [1, '#6B1D2A']],
                     labels={"TRIR": "TRIR (per 200k hrs)"}
                 )
                 st.plotly_chart(fig_trir, width='stretch')
@@ -1040,7 +1243,7 @@ elif page == "Claims Analytics":
                     y="DART",
                     title="DART (Days Away/Restricted/Transferred) by Crew",
                     color="DART",
-                    color_continuous_scale="Oranges",
+                    color_continuous_scale=[[0, '#f0e6e8'], [0.5, '#A63D50'], [1, '#4A0E1B']],
                     labels={"DART": "DART (per 200k hrs)"}
                 )
                 st.plotly_chart(fig_dart, width='stretch')
@@ -1057,7 +1260,7 @@ elif page == "Claims Analytics":
                     y="IncidentFrequency",
                     title="Incident Frequency by Crew",
                     color="IncidentFrequency",
-                    color_continuous_scale="Blues",
+                    color_continuous_scale=[[0, '#e8e8e8'], [1, '#555555']],
                     labels={"IncidentFrequency": "Frequency (per 200k hrs)"}
                 )
                 st.plotly_chart(fig_freq, width='stretch')
@@ -1070,7 +1273,7 @@ elif page == "Claims Analytics":
                     y="Severity",
                     title="Average Claim Severity by Crew",
                     color="Severity",
-                    color_continuous_scale="Purples",
+                    color_continuous_scale=[[0, '#e8e8e8'], [0.5, '#999999'], [1, '#333333']],
                     labels={"Severity": "Avg Cost per Claim ($)"}
                 )
                 st.plotly_chart(fig_severity, width='stretch')
@@ -1157,24 +1360,185 @@ elif page == "Fleet Risk":
     if fleet_df.empty:
         st.info("No fleet data available.")
     else:
-        c1, c2, c3, c4 = st.columns(4)
-        c1.metric("Miles Driven", f"{fleet_df['MilesDriven'].sum():,.0f}")
-        c2.metric("Speeding Events", f"{fleet_df['SpeedingEvents'].sum():,.0f}")
-        c3.metric("Harsh Brake Events", f"{fleet_df['HarshBrakeEvents'].sum():,.0f}")
-        c4.metric("Vehicle Accidents", f"{fleet_df['VehicleAccidents'].sum():,.0f}")
+        # ── Top-level KPIs ──
+        c1, c2, c3, c4, c5 = st.columns(5)
+        c1.metric("Total Distance (mi)", f"{fleet_df['MilesDriven'].sum():,.0f}")
+        c2.metric("Total Events", f"{fleet_df['Total Events'].sum():,.0f}" if "Total Events" in fleet_df.columns else "N/A")
+        c3.metric("Crashes", f"{fleet_df['VehicleAccidents'].sum():,.0f}")
+        c4.metric("Speeding Events", f"{fleet_df['SpeedingEvents'].sum():,.0f}")
+        c5.metric("Avg Safety Score", f"{fleet_df['Safety Score'].mean():,.1f}" if "Safety Score" in fleet_df.columns else "N/A")
 
-        by_driver = fleet_df.groupby("Driver").agg(
-            MilesDriven=("MilesDriven", "sum"),
-            SpeedingEvents=("SpeedingEvents", "sum"),
-            HarshBrakeEvents=("HarshBrakeEvents", "sum"),
-            HarshAccelEvents=("HarshAccelEvents", "sum"),
-            VehicleAccidents=("VehicleAccidents", "sum"),
-        ).reset_index()
+        st.markdown("---")
 
-        fig = px.bar(by_driver, x="Driver", y="SpeedingEvents", title="Speeding Events by Driver")
-        st.plotly_chart(fig, width='stretch')
+        # ── Comprehensive by-driver aggregation ──
+        agg_dict = {
+            "MilesDriven": ("MilesDriven", "sum"),
+            "SpeedingEvents": ("SpeedingEvents", "sum"),
+            "HarshBrakeEvents": ("HarshBrakeEvents", "sum"),
+            "HarshAccelEvents": ("HarshAccelEvents", "sum"),
+            "SeatbeltViolations": ("SeatbeltViolations", "sum"),
+            "DistractedDrivingEvents": ("DistractedDrivingEvents", "sum"),
+            "VehicleAccidents": ("VehicleAccidents", "sum"),
+        }
+        # Add Samsara-native columns if present
+        optional_agg = {
+            "Safety Score": ("Safety Score", "mean"),
+            "Total Events": ("Total Events", "sum"),
+            "Total Behaviors": ("Total Behaviors", "sum"),
+            "Harsh Turn": ("Harsh Turn", "sum"),
+            "Drowsy": ("Drowsy", "sum"),
+            "Rolling Stop": ("Rolling Stop", "sum"),
+            "Forward Collision Warning": ("Forward Collision Warning", "sum"),
+            "Near Collision (Manual)": ("Near Collision (Manual)", "sum"),
+            "Following Distance": ("Following Distance", "sum"),
+            "Crash": ("Crash", "sum"),
+        }
+        for label, (col, func) in optional_agg.items():
+            if col in fleet_df.columns:
+                agg_dict[label] = (col, func)
 
-        st.dataframe(by_driver, width='stretch')
+        by_driver = fleet_df.groupby("Driver").agg(**agg_dict).reset_index()
+
+        # ── Safety Score by Driver ──
+        if "Safety Score" in by_driver.columns:
+            st.subheader("Safety Score by Driver")
+            fig_safety = px.bar(
+                by_driver.sort_values("Safety Score"),
+                x="Driver", y="Safety Score",
+                title="Samsara Safety Score by Driver (lower = more risk)",
+                color="Safety Score",
+                color_continuous_scale=[[0, '#4A0E1B'], [0.5, '#D4848F'], [1, '#d4edda']],
+            )
+            st.plotly_chart(fig_safety, width='stretch')
+
+        st.markdown("---")
+
+        # ── Event Breakdown by Driver (stacked bar) ──
+        st.subheader("Event Breakdown by Driver")
+        event_cols = [c for c in [
+            "SpeedingEvents", "HarshBrakeEvents", "HarshAccelEvents",
+            "Harsh Turn", "SeatbeltViolations", "DistractedDrivingEvents",
+            "VehicleAccidents", "Drowsy", "Rolling Stop",
+            "Forward Collision Warning", "Near Collision (Manual)",
+            "Following Distance",
+        ] if c in by_driver.columns and by_driver[c].sum() > 0]
+
+        if event_cols:
+            melted = by_driver.melt(
+                id_vars=["Driver"], value_vars=event_cols,
+                var_name="Event Type", value_name="Count",
+            )
+            fig_stack = px.bar(
+                melted, x="Driver", y="Count", color="Event Type",
+                title="All Recorded Events by Driver",
+                barmode="stack",
+            )
+            st.plotly_chart(fig_stack, width='stretch')
+
+        st.markdown("---")
+
+        # ── Speeding Severity Breakdown ──
+        st.subheader("Speeding Severity Breakdown")
+        speed_cols = {
+            "Light Speeding Events Count": "Light",
+            "Moderate Speeding Events Count": "Moderate",
+            "Heavy Speeding Events Count": "Heavy",
+            "Severe Speeding Events Count": "Severe",
+            "Max Speed Events Count": "Max Speed",
+        }
+        avail_speed = {k: v for k, v in speed_cols.items() if k in fleet_df.columns and fleet_df[k].sum() > 0}
+        if avail_speed:
+            speed_agg = fleet_df.groupby("Driver")[list(avail_speed.keys())].sum().reset_index()
+            speed_melted = speed_agg.melt(
+                id_vars=["Driver"], value_vars=list(avail_speed.keys()),
+                var_name="Severity", value_name="Count",
+            )
+            speed_melted["Severity"] = speed_melted["Severity"].map(avail_speed)
+            fig_speed = px.bar(
+                speed_melted, x="Driver", y="Count", color="Severity",
+                title="Speeding Events by Severity per Driver",
+                barmode="stack",
+                color_discrete_map={
+                    "Light": "#fde725", "Moderate": "#fca636",
+                    "Heavy": "#e45a31", "Severe": "#b5282c", "Max Speed": "#7e1037",
+                },
+            )
+            st.plotly_chart(fig_speed, width='stretch')
+        else:
+            st.info("No speeding severity data available.")
+
+        st.markdown("---")
+
+        # ── Distraction & Attention Events ──
+        st.subheader("Distraction & Attention Events")
+        distraction_cols = {
+            "Mobile Usage": "Mobile Usage",
+            "Inattentive Driving": "Inattentive Driving",
+            "Drowsy": "Drowsy",
+            "Eating/Drinking (Manual)": "Eating/Drinking",
+            "Smoking (Manual)": "Smoking",
+            "Obstructed Camera (Automatic)": "Obstructed Cam (Auto)",
+            "Obstructed Camera (Manual)": "Obstructed Cam (Manual)",
+        }
+        avail_distraction = {k: v for k, v in distraction_cols.items() if k in fleet_df.columns and fleet_df[k].sum() > 0}
+        if avail_distraction:
+            dist_agg = fleet_df.groupby("Driver")[list(avail_distraction.keys())].sum().reset_index()
+            dist_melted = dist_agg.melt(
+                id_vars=["Driver"], value_vars=list(avail_distraction.keys()),
+                var_name="Event", value_name="Count",
+            )
+            dist_melted["Event"] = dist_melted["Event"].map(avail_distraction)
+            fig_dist = px.bar(
+                dist_melted, x="Driver", y="Count", color="Event",
+                title="Distraction & Attention Events by Driver",
+                barmode="group",
+            )
+            st.plotly_chart(fig_dist, width='stretch')
+        else:
+            st.info("No distraction event data available.")
+
+        st.markdown("---")
+
+        # ── Collision & Following Distance ──
+        st.subheader("Collision & Following Distance Events")
+        collision_cols = {
+            "Crash": "Crash",
+            "Near Collision (Manual)": "Near Collision",
+            "Forward Collision Warning": "Forward Collision Warning",
+            "Following Distance": "Following Distance",
+            "Following of 0-2s (Manual)": "Following 0-2s",
+            "Following of 2-4s (Manual)": "Following 2-4s",
+        }
+        avail_collision = {k: v for k, v in collision_cols.items() if k in fleet_df.columns and fleet_df[k].sum() > 0}
+        if avail_collision:
+            col_agg = fleet_df.groupby("Driver")[list(avail_collision.keys())].sum().reset_index()
+            col_melted = col_agg.melt(
+                id_vars=["Driver"], value_vars=list(avail_collision.keys()),
+                var_name="Event", value_name="Count",
+            )
+            col_melted["Event"] = col_melted["Event"].map(avail_collision)
+            fig_col = px.bar(
+                col_melted, x="Driver", y="Count", color="Event",
+                title="Collision & Following Distance Events by Driver",
+                barmode="group",
+            )
+            st.plotly_chart(fig_col, width='stretch')
+        else:
+            st.info("No collision/following distance data available.")
+
+        st.markdown("---")
+
+        # ── Full Driver Summary Table ──
+        st.subheader("Full Driver Summary")
+        display_cols = ["Driver"] + [c for c in [
+            "Safety Score", "MilesDriven", "Total Events", "Total Behaviors",
+            "SpeedingEvents", "HarshBrakeEvents", "HarshAccelEvents",
+            "Harsh Turn", "SeatbeltViolations", "DistractedDrivingEvents",
+            "VehicleAccidents", "Drowsy", "Rolling Stop",
+            "Forward Collision Warning", "Near Collision (Manual)",
+            "Following Distance",
+        ] if c in by_driver.columns]
+        st.dataframe(by_driver[display_cols], width='stretch')
 
 # ============================================================
 # PAGE: UTILITY STRIKE TRACKER
@@ -1346,12 +1710,22 @@ elif page == "Upload Data":
         ]})
         st.dataframe(payroll_ref, width='stretch', hide_index=True)
     
-    with st.expander("Fleet Events Columns", expanded=False):
-        st.info("**Note:** Date should be in MM/DD/YYYY format. All event counts should be numeric.")
-        fleet_ref = pd.DataFrame({"Column": FLEET_COLS, "Example": [
-            "3/10/2026", "F350-12", "Driver B", "Locator", "Pot Hole Crew",
-            "175", "5.8", "2", "0", "1", "0", "0", "0", "0.8"
-        ]})
+    with st.expander("Fleet Events Columns (Samsara)", expanded=False):
+        st.info(
+            "**Note:** These columns match the Samsara Safety Report export. "
+            "Event counts should be numeric. Time columns use hh:mm:ss format."
+        )
+        fleet_examples = [
+            "John Doe", "12345", "johndoe", "85",
+            "06:30:00", "175", "12", "8",
+            "00:05:00", "00:02:00", "00:01:00", "00:00:30",
+            "00:00:00", "0", "40", "20", "10", "5", "0",
+            "4", "2", "1", "1", "0", "78", "3/10/2026 14:30",
+            "0", "3", "1", "0", "0", "1", "0",
+            "2", "1", "1", "3", "1", "0", "0",
+            "0", "0", "0", "0", "0", "0", "0", "1", "0"
+        ]
+        fleet_ref = pd.DataFrame({"Column": FLEET_COLS, "Example": fleet_examples})
         st.dataframe(fleet_ref, width='stretch', hide_index=True)
     
     with st.expander("Incident Reports Columns", expanded=False):
@@ -1384,7 +1758,11 @@ elif page == "Upload Data":
     if loss_upload:
         is_valid, msg, df = validate_upload(loss_upload, LOSS_COLS)
         if is_valid:
+            # Store uploaded loss runs as the only in-session source of truth.
+            # This intentionally replaces existing loss data and does not append/merge.
+            st.session_state["loss_runs_uploaded_df"] = df.copy()
             st.success(msg)
+            st.info("Uploaded loss run data is now replacing existing loss run data for this session.")
             col1, col2 = st.columns([3, 1])
             with col1:
                 st.info(f"✓ File contains {len(df)} rows and {len(df.columns)} columns")
@@ -1392,7 +1770,7 @@ elif page == "Upload Data":
                 if st.button("Save Loss Runs", key="save_loss"):
                     file_path = DATA_DIR / "loss_runs.csv"
                     if save_uploaded_file(file_path, df):
-                        st.success(f"✓ Saved! Refresh to see changes.")
+                        st.success("✓ Saved! Uploaded loss run data replaced the existing loss run file.")
         else:
             st.error(msg)
 
