@@ -201,6 +201,56 @@ def to_datetime_safe(df: pd.DataFrame, cols: list[str]) -> pd.DataFrame:
     return df
 
 
+def transform_payroll_format(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Transform payroll data from new format (Job Number, Job Name, Date, Hours, Who)
+    to expected format (Year, Month, Crew, HoursWorked, Employees, Payroll).
+    Returns unchanged df if already in expected format.
+    """
+    if df.empty:
+        return df
+    
+    # Check if already in expected format
+    if "Year" in df.columns and "Month" in df.columns and "HoursWorked" in df.columns:
+        return df
+    
+    # Check if in new format
+    required_new_cols = {"Job Number", "Job Name", "Date", "Hours", "Who"}
+    if not required_new_cols.issubset(set(df.columns)):
+        return df  # Can't transform if columns don't match either format
+    
+    # Make a copy to transform
+    df = df.copy()
+    
+    # Parse Date column
+    df["Date"] = pd.to_datetime(df["Date"], errors="coerce")
+    df["Year"] = df["Date"].dt.year.astype(str)
+    df["Month"] = df["Date"].dt.month.astype(str)
+    
+    # Rename columns
+    df["Crew"] = df["Job Name"]
+    df["HoursWorked"] = pd.to_numeric(df["Hours"], errors="coerce").fillna(0)
+    
+    # Count employees per Job Name per Month
+    # Group by Year, Month, Crew (Job Name) and count unique employees
+    employees_count = df.groupby(["Year", "Month", "Crew"])["Who"].nunique().reset_index()
+    employees_count.columns = ["Year", "Month", "Crew", "Employees"]
+    
+    # Sum hours per Year, Month, Crew
+    hours_sum = df.groupby(["Year", "Month", "Crew"])["HoursWorked"].sum().reset_index()
+    
+    # Merge the two aggregations
+    result = hours_sum.merge(employees_count, on=["Year", "Month", "Crew"], how="left")
+    
+    # Add Payroll column (can be calculated if you have a rate, otherwise 0)
+    result["Payroll"] = 0  # Placeholder - update if you have payroll data
+    
+    # Select only the expected columns in order
+    result = result[["Year", "Month", "Crew", "HoursWorked", "Employees", "Payroll"]]
+    
+    return result
+
+
 def risk_level(score: float) -> str:
     if score <= 20:
         return "Low"
@@ -223,6 +273,33 @@ def validate_upload(uploaded_file, expected_cols: list[str]) -> tuple[bool, str,
             return False, f"Missing columns: {', '.join(missing_cols)}", pd.DataFrame()
         
         return True, "✓ File validated successfully", df
+    except Exception as e:
+        return False, f"Error reading file: {str(e)}", pd.DataFrame()
+
+
+def validate_payroll_upload(uploaded_file) -> tuple[bool, str, pd.DataFrame]:
+    """
+    Validate payroll upload - accepts either old format (Year, Month, Crew, ...)
+    or new format (Job Number, Job Name, Date, Hours, Who).
+    """
+    try:
+        df = pd.read_csv(uploaded_file)
+        
+        # Check for old format first
+        old_format_cols = {"Year", "Month", "Crew", "HoursWorked", "Employees", "Payroll"}
+        if old_format_cols.issubset(set(df.columns)):
+            return True, "✓ File validated successfully (old format)", df
+        
+        # Check for new format
+        new_format_cols = {"Job Number", "Job Name", "Date", "Hours", "Who"}
+        if new_format_cols.issubset(set(df.columns)):
+            # Transform to expected format
+            df = transform_payroll_format(df)
+            return True, "✓ File validated and transformed successfully (new format)", df
+        
+        # Neither format matches
+        expected = ", ".join(old_format_cols.union(new_format_cols))
+        return False, f"File must contain either old format columns (Year, Month, Crew, HoursWorked, Employees, Payroll) or new format columns (Job Number, Job Name, Date, Hours, Who)", pd.DataFrame()
     except Exception as e:
         return False, f"Error reading file: {str(e)}", pd.DataFrame()
 
@@ -307,6 +384,7 @@ if "loss_runs_uploaded_df" in st.session_state:
 else:
     loss_df = load_csv(FILES["loss_runs"])
 payroll_df = load_csv(FILES["payroll"])
+payroll_df = transform_payroll_format(payroll_df)  # Transform if using new format
 fleet_df = load_csv(FILES["fleet"])
 incident_df = load_csv(FILES["incidents"])
 utility_df = load_csv(FILES["utility"])
@@ -590,6 +668,8 @@ def get_metrics_by_period():
     # Monthly payroll totals
     monthly_hours = payroll_df.groupby(["Year", "Month"])["HoursWorked"].sum().reset_index()
     monthly_hours.columns = ["Year", "Month", "TotalHours"]
+    # Ensure Month is int to match monthly_claims
+    monthly_hours["Month"] = monthly_hours["Month"].astype(int)
 
     # Monthly claim metrics
     loss_df_copy = loss_df.copy()
@@ -604,6 +684,8 @@ def get_metrics_by_period():
         agg_map["LostTimeClaims"] = ("LostTime", "sum")
 
     monthly_claims = loss_df_copy.groupby(["Year", "Month"]).agg(**agg_map).reset_index()
+    # Ensure Month is int 
+    monthly_claims["Month"] = monthly_claims["Month"].astype(int)
 
     if "RecordableClaims" not in monthly_claims.columns:
         monthly_claims["RecordableClaims"] = 0
@@ -1603,8 +1685,10 @@ utility_strikes.csv or utility_strikes_sample.csv"""
     st.markdown("**loss_runs**")
     st.code(",".join(LOSS_COLS))
 
-    st.markdown("**payroll_hours**")
+    st.markdown("**payroll_hours** (Supported Formats)")
+    st.markdown("*Option 1 (Original):*")
     st.code(",".join(PAYROLL_COLS))
+    st.markdown("*Option 2 (New):* Job Number, Job Name, Date, Hours, Who")
 
     st.markdown("**fleet_events**")
     st.code(",".join(FLEET_COLS))
@@ -1704,11 +1788,35 @@ elif page == "Upload Data":
         st.dataframe(loss_ref, width='stretch', hide_index=True)
     
     with st.expander("Payroll Hours Columns", expanded=False):
-        st.info("**Note:** Year and Month should be numeric (e.g., 2026, 3)")
+        st.info(
+            """
+            **Supported Formats:**
+            
+            **Option 1 (Original Format):** Year, Month, Crew, HoursWorked, Employees, Payroll
+            - Year and Month should be numeric (e.g., 2026, 3)
+            
+            **Option 2 (New Format):** Job Number, Job Name, Date, Hours, Who
+            - Date should be in MM/DD/YYYY format
+            - Hours should be numeric
+            - Who is the employee name (will automatically count unique employees per month/crew)
+            
+            Either format will be automatically transformed to the internal format.
+            """
+        )
         payroll_ref = pd.DataFrame({"Column": PAYROLL_COLS, "Example": [
             "2026", "3", "Pot Hole Crew", "3900", "5", "87000"
         ]})
         st.dataframe(payroll_ref, width='stretch', hide_index=True)
+        
+        st.markdown("**New Format Example:**")
+        new_format_example = pd.DataFrame({
+            "Job Number": ["J001", "J001", "J002"],
+            "Job Name": ["Pot Hole Crew", "Pot Hole Crew", "Electrical"],
+            "Date": ["03/15/2026", "03/16/2026", "03/15/2026"],
+            "Hours": ["8", "8", "10"],
+            "Who": ["John Doe", "Jane Smith", "John Doe"]
+        })
+        st.dataframe(new_format_example, width='stretch', hide_index=True)
     
     with st.expander("Fleet Events Columns (Samsara)", expanded=False):
         st.info(
@@ -1785,7 +1893,7 @@ elif page == "Upload Data":
         accept_multiple_files=False,
     )
     if payroll_upload:
-        is_valid, msg, df = validate_upload(payroll_upload, PAYROLL_COLS)
+        is_valid, msg, df = validate_payroll_upload(payroll_upload)
         if is_valid:
             st.success(msg)
             col1, col2 = st.columns([3, 1])
