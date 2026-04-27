@@ -1,0 +1,11 @@
+StrikeID,Date,Time,Crew,JobTitle,Supervisor,EquipmentUsed,UtilityType,Located,ToleranceZone,RepairCost,CitationIssued,Location,HiringContractor
+2645815,04/08/2024,,,,,Boring Equipment,Sewer,Yes,,"$9,612",,"10537 E Topaz Circle Scottsdale, Arizona  85258",
+2662292,07/25/2024,,,,,,Communication,Yes,,$0,,"5151 E Sheena Drive & N 52nd Street Scottsdale, Arizona  85254",
+2663800,07/31/2024,,,,,Boring Equipment,Communication,Yes,,"$22,758",,"2603 N. Pleasant Drive Chandler, Arizona  85225",
+2665173,07/31/2024,,,,,Pothole,Communication,Yes,,$0,,"Chandler, Arizona",
+2665916,03/23/2024,,,,,,Electric,Yes,,"$13,292",,"6935 E Gold Dust Ave Paradise Valley, Arizona  85253",
+2674653,01/14/2025,,,,,,Communication,Yes,,"$11,292",,"5024 East Desert Park Lane Paradise Valley, Arizona",
+2679468,07/01/2024,,,,,,Communication,Yes,,$0,,"9705 E Mountain View Rd Scottsdale, Arizona  85258",
+2679602,02/18/2025,,,,,,Communication,Yes,,"$8,606",,"18852 N 130th Ave Sun City, Arizona  85375",
+2682462,08/12/2024,,,,,,Communication,Yes,,$0,,"903 W Mission Dr Chandler, Arizona  85225",
+2695769,02/21/2025,,,,,,Communication,Yes,,"$8,000",,"5019 E  Rancho del Oro Dr. Cave Creek, Arizona",

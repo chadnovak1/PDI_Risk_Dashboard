@@ -272,6 +272,9 @@ def validate_upload(uploaded_file, expected_cols: list[str]) -> tuple[bool, str,
         if missing_cols:
             return False, f"Missing columns: {', '.join(missing_cols)}", pd.DataFrame()
         
+        # Keep only expected columns to prevent column pollution
+        df = df[expected_cols]
+        
         return True, "✓ File validated successfully", df
     except Exception as e:
         return False, f"Error reading file: {str(e)}", pd.DataFrame()
@@ -305,12 +308,31 @@ def validate_payroll_upload(uploaded_file) -> tuple[bool, str, pd.DataFrame]:
 
 
 def save_uploaded_file(file_path: Path, df: pd.DataFrame) -> bool:
-    """Save uploaded dataframe to file."""
+    """Save uploaded dataframe to file (overwrites existing)."""
     try:
         df.to_csv(file_path, index=False)
         return True
     except Exception as e:
         st.error(f"Error saving file: {str(e)}")
+        return False
+
+
+def append_payroll_file(file_path: Path, df: pd.DataFrame) -> bool:
+    """Append uploaded payroll dataframe to existing file (does not overwrite)."""
+    try:
+        if file_path.exists():
+            # Read existing data
+            existing_df = pd.read_csv(file_path)
+            # Combine with new data
+            combined_df = pd.concat([existing_df, df], ignore_index=True)
+        else:
+            combined_df = df.copy()
+        
+        # Save combined data
+        combined_df.to_csv(file_path, index=False)
+        return True
+    except Exception as e:
+        st.error(f"Error appending payroll file: {str(e)}")
         return False
 
 
@@ -383,11 +405,27 @@ if "loss_runs_uploaded_df" in st.session_state:
     loss_df = st.session_state["loss_runs_uploaded_df"].copy()
 else:
     loss_df = load_csv(FILES["loss_runs"])
-payroll_df = load_csv(FILES["payroll"])
+# Payroll data: use session state if available (accumulated from upload), otherwise load from file
+if "payroll_accumulated_df" in st.session_state:
+    payroll_df = st.session_state["payroll_accumulated_df"].copy()
+else:
+    payroll_df = load_csv(FILES["payroll"])
 payroll_df = transform_payroll_format(payroll_df)  # Transform if using new format
-fleet_df = load_csv(FILES["fleet"])
-incident_df = load_csv(FILES["incidents"])
-utility_df = load_csv(FILES["utility"])
+# Uploaded fleet events fully replace default/sample data for this session.
+if "fleet_events_uploaded_df" in st.session_state:
+    fleet_df = st.session_state["fleet_events_uploaded_df"].copy()
+else:
+    fleet_df = load_csv(FILES["fleet"])
+# Uploaded incident reports fully replace default/sample data for this session.
+if "incident_reports_uploaded_df" in st.session_state:
+    incident_df = st.session_state["incident_reports_uploaded_df"].copy()
+else:
+    incident_df = load_csv(FILES["incidents"])
+# Uploaded utility strikes fully replace default/sample data for this session.
+if "utility_strikes_uploaded_df" in st.session_state:
+    utility_df = st.session_state["utility_strikes_uploaded_df"].copy()
+else:
+    utility_df = load_csv(FILES["utility"])
 
 # ============================================================
 # EXPECTED COLUMNS
@@ -1870,10 +1908,10 @@ elif page == "Upload Data":
             # This intentionally replaces existing loss data and does not append/merge.
             st.session_state["loss_runs_uploaded_df"] = df.copy()
             st.success(msg)
-            st.info("Uploaded loss run data is now replacing existing loss run data for this session.")
+            st.info("✓ Uploaded loss run data is now replacing existing loss run data for this session.")
             col1, col2 = st.columns([3, 1])
             with col1:
-                st.info(f"✓ File contains {len(df)} rows and {len(df.columns)} columns")
+                st.info(f"📊 Using {len(df)} claims with {len(LOSS_COLS)} required fields")
             with col2:
                 if st.button("Save Loss Runs", key="save_loss"):
                     file_path = DATA_DIR / "loss_runs.csv"
@@ -1885,7 +1923,11 @@ elif page == "Upload Data":
     st.markdown("---")
 
     # Payroll Hours Upload
-    st.markdown("### Payroll Hours")
+    st.markdown("### Payroll Hours (Multi-Year Accumulation)")
+    st.markdown("""
+    **📌 Important**: Upload payroll data by year. Each upload will be **appended** to existing data, 
+    not overwritten. This allows 3-year averages for TRIR/DART calculations.
+    """)
     payroll_upload = st.file_uploader(
         "Upload payroll_hours.csv",
         type="csv",
@@ -1896,14 +1938,31 @@ elif page == "Upload Data":
         is_valid, msg, df = validate_payroll_upload(payroll_upload)
         if is_valid:
             st.success(msg)
+            
+            # Load current data (from disk or session state)
+            current_df = load_csv(FILES["payroll"]) if (DATA_DIR / "payroll_hours.csv").exists() else pd.DataFrame(columns=PAYROLL_COLS)
+            
+            # Combine with new data
+            combined_df = pd.concat([current_df, df], ignore_index=True) if not current_df.empty else df
+            
+            # Store in session state for immediate display
+            st.session_state["payroll_accumulated_df"] = combined_df.copy()
+            
+            # Show what years are now available
+            if "Year" in combined_df.columns:
+                years = sorted(combined_df["Year"].unique())
+                st.info(f"📊 Current payroll data includes years: {', '.join(map(str, years))}")
+            
             col1, col2 = st.columns([3, 1])
             with col1:
-                st.info(f"✓ File contains {len(df)} rows and {len(df.columns)} columns")
+                st.info(f"📊 Current: {len(combined_df)} total rows across all years with {len(PAYROLL_COLS)} required fields")
             with col2:
-                if st.button("Save Payroll Hours", key="save_payroll"):
+                if st.button("Append Payroll Hours", key="save_payroll"):
                     file_path = DATA_DIR / "payroll_hours.csv"
-                    if save_uploaded_file(file_path, df):
-                        st.success(f"✓ Saved! Refresh to see changes.")
+                    if append_payroll_file(file_path, df):
+                        st.success(f"✓ Appended! {len(df)} new rows added to existing payroll data.")
+                    else:
+                        st.error("Failed to append payroll data.")
         else:
             st.error(msg)
 
@@ -1920,15 +1979,17 @@ elif page == "Upload Data":
     if fleet_upload:
         is_valid, msg, df = validate_upload(fleet_upload, FLEET_COLS)
         if is_valid:
+            st.session_state["fleet_events_uploaded_df"] = df.copy()
             st.success(msg)
+            st.info("✓ Uploaded fleet events data is now replacing existing fleet events data for this session.")
             col1, col2 = st.columns([3, 1])
             with col1:
-                st.info(f"✓ File contains {len(df)} rows and {len(df.columns)} columns")
+                st.info(f"📊 Using {len(df)} driver records with {len(FLEET_COLS)} required fields")
             with col2:
                 if st.button("Save Fleet Events", key="save_fleet"):
                     file_path = DATA_DIR / "fleet_events.csv"
                     if save_uploaded_file(file_path, df):
-                        st.success(f"✓ Saved! Refresh to see changes.")
+                        st.success("✓ Saved! Uploaded fleet events data replaced the existing fleet events file.")
         else:
             st.error(msg)
 
@@ -1945,15 +2006,17 @@ elif page == "Upload Data":
     if incident_upload:
         is_valid, msg, df = validate_upload(incident_upload, INCIDENT_COLS)
         if is_valid:
+            st.session_state["incident_reports_uploaded_df"] = df.copy()
             st.success(msg)
+            st.info("✓ Uploaded incident reports data is now replacing existing incident reports data for this session.")
             col1, col2 = st.columns([3, 1])
             with col1:
-                st.info(f"✓ File contains {len(df)} rows and {len(df.columns)} columns")
+                st.info(f"📊 Using {len(df)} incidents with {len(INCIDENT_COLS)} required fields")
             with col2:
                 if st.button("Save Incident Reports", key="save_incident"):
                     file_path = DATA_DIR / "incident_reports.csv"
                     if save_uploaded_file(file_path, df):
-                        st.success(f"✓ Saved! Refresh to see changes.")
+                        st.success("✓ Saved! Uploaded incident reports data replaced the existing incident reports file.")
         else:
             st.error(msg)
 
@@ -1970,14 +2033,17 @@ elif page == "Upload Data":
     if utility_upload:
         is_valid, msg, df = validate_upload(utility_upload, UTILITY_COLS)
         if is_valid:
+            # Store uploaded utility strikes as the in-session source of truth.
+            st.session_state["utility_strikes_uploaded_df"] = df.copy()
             st.success(msg)
+            st.info("✓ Uploaded utility strikes data is now replacing existing utility strikes data for this session.")
             col1, col2 = st.columns([3, 1])
             with col1:
-                st.info(f"✓ File contains {len(df)} rows and {len(df.columns)} columns")
+                st.info(f"📊 Using {len(df)} utility strikes with {len(UTILITY_COLS)} required fields")
             with col2:
                 if st.button("Save Utility Strikes", key="save_utility"):
                     file_path = DATA_DIR / "utility_strikes.csv"
                     if save_uploaded_file(file_path, df):
-                        st.success(f"✓ Saved! Refresh to see changes.")
+                        st.success("✓ Saved! Uploaded utility strikes data replaced the existing utility strikes file.")
         else:
             st.error(msg)
